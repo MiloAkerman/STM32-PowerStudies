@@ -105,7 +105,24 @@ int main(void)
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
 
+
   /* USER CODE BEGIN Init */
+
+//  // Testing the power consumption in sleep mode
+//  HAL_Delay(1000);
+//  HAL_SuspendTick();
+//  HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON,PWR_SLEEPENTRY_WFI);
+//  HAL_ResumeTick();
+//
+//  // Testing the power consumption in low power sleep mode
+//  HAL_Delay(2000);
+//  HAL_SuspendTick();
+//  HAL_PWR_EnterSLEEPMode(PWR_LOWPOWERREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+//  HAL_ResumeTick();
+//
+//  // Testing the power consumption in low power standby mode
+//  HAL_Delay(2000);
+//  HAL_PWR_EnterSTANDBYMode();
 
   /* USER CODE END Init */
 
