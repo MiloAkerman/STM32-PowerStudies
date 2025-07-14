@@ -36,7 +36,7 @@
 /*                             demonstration code based on hardware semaphore */
 /* This define is present in both CM7/CM4 projects                            */
 /* To comment when developping/debugging on a single core                     */
-#define DUAL_CORE_BOOT_SYNC_SEQUENCE
+// #define DUAL_CORE_BOOT_SYNC_SEQUENCE
 
 #if defined(DUAL_CORE_BOOT_SYNC_SEQUENCE)
 #ifndef HSEM_ID_0
@@ -167,7 +167,7 @@ Error_Handler();
   while (1)
   {
     /* USER CODE END WHILE */
-
+	  printf("Tick");
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -355,6 +355,7 @@ void Error_Handler(void)
   __disable_irq();
   while (1)
   {
+	  printf("Error!");
   }
   /* USER CODE END Error_Handler_Debug */
 }
