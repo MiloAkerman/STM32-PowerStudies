@@ -36,7 +36,7 @@
 /*                             demonstration code based on hardware semaphore */
 /* This define is present in both CM7/CM4 projects                            */
 /* To comment when developping/debugging on a single core                     */
-#define DUAL_CORE_BOOT_SYNC_SEQUENCE
+//#define DUAL_CORE_BOOT_SYNC_SEQUENCE
 
 #if defined(DUAL_CORE_BOOT_SYNC_SEQUENCE)
 #ifndef HSEM_ID_0
@@ -105,24 +105,7 @@ int main(void)
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
 
-
   /* USER CODE BEGIN Init */
-
-//  // Testing the power consumption in sleep mode
-//  HAL_Delay(1000);
-//  HAL_SuspendTick();
-//  HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON,PWR_SLEEPENTRY_WFI);
-//  HAL_ResumeTick();
-//
-//  // Testing the power consumption in low power sleep mode
-//  HAL_Delay(2000);
-//  HAL_SuspendTick();
-//  HAL_PWR_EnterSLEEPMode(PWR_LOWPOWERREGULATOR_ON, PWR_SLEEPENTRY_WFI);
-//  HAL_ResumeTick();
-//
-//  // Testing the power consumption in low power standby mode
-//  HAL_Delay(2000);
-//  HAL_PWR_EnterSTANDBYMode();
 
   /* USER CODE END Init */
 
@@ -159,6 +142,11 @@ Error_Handler();
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  // Testing the power consumption in sleep mode
+  HAL_Delay(1000);
+  HAL_SuspendTick();
+  HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON,PWR_SLEEPENTRY_WFI);
+  HAL_ResumeTick();
 
   /* USER CODE END 2 */
 

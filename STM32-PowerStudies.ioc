@@ -32,6 +32,7 @@ DSI_D1P.Signal=DSIHOST_D1P
 ETH.IPParameters=MediaInterface
 ETH.MediaInterface=HAL_ETH_RMII_MODE
 File.Version=6
+GPIO.groupedBy=Group By Peripherals
 KeepUserPlacement=false
 Mcu.CPN=STM32H747XIH6
 Mcu.Context0=CortexM7
