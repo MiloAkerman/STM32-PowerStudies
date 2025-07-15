@@ -57,6 +57,10 @@
 #include "tinycnnbuow.h"
 #include "tinycnnbuow_data.h"
 
+#include "mel_spectrogram.h"
+#include "mel_filterbank.h"
+
+
 /* USER CODE BEGIN includes */
 /* USER CODE END includes */
 
@@ -167,30 +171,110 @@ static int ai_run(void)
 
   return 0;
 }
-
 /* USER CODE BEGIN 2 */
-int acquire_and_process_data(ai_i8* data[])
+int acquire_and_process_data(ai_i8* data[], int16_t* pcm_buffer)
 {
-  /* fill the inputs of the c-model
-  for (int idx=0; idx < AI_TINYCNNBUOW_IN_NUM; idx++ )
-  {
-      data[idx] = ....
-  }
 
-  */
-  return 0;
+  // TODO: move spectrogram conversion to a different place
+
+  // define configuration - match trained model
+    MelSpectrogramConfig_t config = {.fft_size = 512,
+                                     .hop_length = 256,
+                                     .n_mels = 64,
+                                     .sample_rate = 16000.0f,
+                                     .f_min = 0.0f,
+                                     .f_max = 8000.0f};
+
+    mel_spectrogram_init(&config);
+
+    // output spectrogram buffer
+    // n_mels x n_frames
+    static float mel_spec[64 * 20]; // 64 mel bands, 20 frames (for 512 samples, hop_length=256)
+    // zero out mel spectrogram buffer
+    memset(mel_spec, 0, sizeof(mel_spec));
+
+    // call DSP pipeline for PCMBuffer -> mel_spec
+    int n_frames = calculate_mel_spectrogram((const int16_t *)pcm_buffer, sizeof(pcm_buffer)/sizeof(int16_t), mel_spec,
+                                             20); // max columns
+
+    if (n_frames < 0) {
+	   printf("Spectrogram calculation failed.\n");
+	   return -1;
+   }
+
+    // normalize to [0, 1]
+    normalize_spectrogram(mel_spec, config.n_mels, n_frames);
+
+    // dump to CSV
+	FILE *f = fopen("spectrogram.csv", "w");
+	if (!f) {
+		perror("Failed to open spectrogram.csv");
+		return -1;
+	}
+
+	for (int i = 0; i < 64; ++i) {
+		for (int j = 0; j < 20; ++j) {
+			fprintf(f, "%.6f", mel_spec[i * 20 + j]);
+			if (j < 20 - 1) fprintf(f, ",");
+		}
+		fprintf(f, "\n");
+	}
+
+	fclose(f);
+	printf("Spectrogram saved to spectrogram.csv\n");
+
+
+    float *dst = (float *)data[0];
+
+    for (int i = 0; i < AI_TINYCNNBUOW_IN_1_SIZE; ++i) {
+        dst[i] = mel_spec[i];  // 64 * 258 = 16512
+    }
+
+    return 0;
 }
+
 
 int post_process(ai_i8* data[])
 {
   /* process the predictions
-  for (int idx=0; idx < AI_TINYCNNBUOW_OUT_NUM; idx++ )
-  {
-      data[idx] = ....
-  }
-
   */
-  return 0;
+
+    // data[0] is a void pointer to a float buffer
+    float *predictions = (float *)data[0];
+
+    char *class_names[] = {
+        "Cluck",
+        "Coocoo",
+        "Twitter",
+        "Alarm",
+        "Chick Begging",
+        "no_buow"
+    };
+
+    int max_index = 0;
+    float max_value = predictions[0];
+    for (int i = 0; i < AI_TINYCNNBUOW_OUT_1_SIZE; ++i) {
+        if (predictions[i] > max_value) {
+            max_value = predictions[i];
+            max_index = i;
+        }
+        int predict = predictions[i] * 100;
+        int whole_part = predict / 100;
+        if (predict < 0) {
+          predict -= 2 * predict; // convert to positive
+        }
+
+      printf("Class: %s, Score: %d.%d\n\r", class_names[i], whole_part, predict%100);
+      HAL_Delay(2000);
+    }
+    printf("Predicted Class: %s\n\r", class_names[max_index]);
+    HAL_Delay(8000);
+
+    return 0;
+
+    // output tensor is the first element of data array
+
+    // return 0;
 }
 /* USER CODE END 2 */
 
@@ -205,24 +289,29 @@ void MX_X_CUBE_AI_Init(void)
     /* USER CODE END 5 */
 }
 
-void MX_X_CUBE_AI_Process(void)
+/* USER CODE BEGIN 6 */
+void MX_X_CUBE_AI_Process(int16_t *pcm_buffer)
 {
-    /* USER CODE BEGIN 6 */
-  int res = -1;
 
-  printf("TEMPLATE - run - main loop\r\n");
+  int res = -1;
 
   if (tinycnnbuow) {
 
     do {
       /* 1 - acquire and pre-process input data */
-      res = acquire_and_process_data(data_ins);
+      printf("processing data...\r\n");
+      res = acquire_and_process_data(data_ins, pcm_buffer);
       /* 2 - process the data - call inference engine */
-      if (res == 0)
+      if (res == 0){
+    	printf("running inference...\r\n");
         res = ai_run();
+      }
       /* 3- post-process the predictions */
-      if (res == 0)
+      if (res == 0) {
+    	printf("post-processing...\r\n");
         res = post_process(data_outs);
+        return;
+      }
     } while (res==0);
   }
 
@@ -230,8 +319,8 @@ void MX_X_CUBE_AI_Process(void)
     ai_error err = {AI_ERROR_INVALID_STATE, AI_ERROR_CODE_NETWORK};
     ai_log_err(err, "Process has FAILED");
   }
-    /* USER CODE END 6 */
 }
+/* USER CODE END 6 */
 #ifdef __cplusplus
 }
 #endif

@@ -46,14 +46,17 @@ extern "C" {
 
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
-
+#define RECORD_BUFFER_SIZE        4096
 /* USER CODE END EM */
 
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+extern uint8_t AI_PROCESS;
+extern uint16_t RecPlayback[2 * RECORD_BUFFER_SIZE];
+extern uint16_t PlaybackBuffer[2 * RECORD_BUFFER_SIZE];
+extern uint32_t playbackPtr;
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

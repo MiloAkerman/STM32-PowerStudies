@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "app_x-cube-ai.h"
+#include "pcm_buffer.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -155,7 +156,7 @@ Error_Handler();
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART1_UART_Init();
-  //MX_X_CUBE_AI_Init();
+  MX_X_CUBE_AI_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -165,11 +166,12 @@ Error_Handler();
   while (1)
   {
     /* USER CODE END WHILE */
-	  printf("Tick\r\n");
-	  //MX_X_CUBE_AI_Process();
-    /* USER CODE BEGIN 3 */
+	MX_X_CUBE_AI_Process(test_pcm_buffer);
+	printf("Processing completed.\r\n");
+	/* USER CODE BEGIN 3 */
+	HAL_Delay(1000); // Delay to avoid flooding the output
+	/* USER CODE END 3 */
   }
-  /* USER CODE END 3 */
 }
 
 /**
