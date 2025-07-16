@@ -142,11 +142,23 @@ Error_Handler();
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  // Testing the power consumption in sleep mode
-  HAL_Delay(1000);
-  HAL_SuspendTick();
-  HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON,PWR_SLEEPENTRY_WFI);
-  HAL_ResumeTick();
+
+//  // Testing the power consumption in sleep mode
+//  HAL_Delay(1000);
+//  HAL_SuspendTick();
+//  HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON,PWR_SLEEPENTRY_WFI);
+//  HAL_ResumeTick();
+
+//  // Test the power consumption in standby mode
+//  HAL_Delay(1000);
+//  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+//  HAL_PWR_EnterSTANDBYMode();
+
+// // Test the power consumption in standby mode
+//  HAL_Delay(1000);
+//  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+//  HAL_PWREx_EnterSTANDBYMode(PWR_D2_DOMAIN);
+//  HAL_PWREx_EnterSTANDBYMode(PWR_D1_DOMAIN);
 
   /* USER CODE END 2 */
 
