@@ -150,13 +150,15 @@ Error_Handler();
 //  HAL_ResumeTick();
 
 //  // Test the power consumption in standby mode
-//  HAL_Delay(1000);
-//  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
-//  HAL_PWR_EnterSTANDBYMode();
+  HAL_Delay(1000);
+  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+  HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1);
+  HAL_PWR_EnterSTANDBYMode();
 
-// // Test the power consumption in standby mode
+// // Test the power consumption in Dstandby mode w/ D1 and D2 in standby
 //  HAL_Delay(1000);
 //  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+//  HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1);
 //  HAL_PWREx_EnterSTANDBYMode(PWR_D2_DOMAIN);
 //  HAL_PWREx_EnterSTANDBYMode(PWR_D1_DOMAIN);
 
