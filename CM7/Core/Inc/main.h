@@ -61,6 +61,11 @@ void Error_Handler(void);
 #define OSC32_OUT_GPIO_Port GPIOC
 #define OSC32_IN_Pin GPIO_PIN_14
 #define OSC32_IN_GPIO_Port GPIOC
+#define wake_up_pin_Pin GPIO_PIN_9
+#define wake_up_pin_GPIO_Port GPIOB
+#define wake_up_pin_EXTI_IRQn EXTI9_5_IRQn
+#define toggle_pin_Pin GPIO_PIN_8
+#define toggle_pin_GPIO_Port GPIOB
 #define STLINK_TX_Pin GPIO_PIN_10
 #define STLINK_TX_GPIO_Port GPIOA
 #define STLINK_RX_Pin GPIO_PIN_9

@@ -144,16 +144,16 @@ Error_Handler();
   /* USER CODE BEGIN 2 */
 
 //  // Testing the power consumption in sleep mode
-//  HAL_Delay(1000);
-//  HAL_SuspendTick();
-//  HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON,PWR_SLEEPENTRY_WFI);
-//  HAL_ResumeTick();
+  HAL_Delay(1000);
+  HAL_SuspendTick();
+  HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON,PWR_SLEEPENTRY_WFI);
+  HAL_ResumeTick();
 
 //  // Test the power consumption in standby mode
-  HAL_Delay(1000);
-  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
-  HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1);
-  HAL_PWR_EnterSTANDBYMode();
+//  HAL_Delay(1000);
+//  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+//  HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1);
+//  HAL_PWR_EnterSTANDBYMode();
 
 // // Test the power consumption in Dstandby mode w/ D1 and D2 in standby
 //  HAL_Delay(1000);
@@ -169,7 +169,9 @@ Error_Handler();
   while (1)
   {
     /* USER CODE END WHILE */
-
+	HAL_GPIO_WritePin(toggle_pin_GPIO_Port, toggle_pin_Pin, GPIO_PIN_SET);   // Set pin high
+    HAL_Delay(1000); // Delay for 1 second
+    HAL_GPIO_WritePin(toggle_pin_GPIO_Port, toggle_pin_Pin, GPIO_PIN_RESET); // Set pin low
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -326,8 +328,25 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(toggle_pin_GPIO_Port, toggle_pin_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : wake_up_pin_Pin */
+  GPIO_InitStruct.Pin = wake_up_pin_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(wake_up_pin_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : toggle_pin_Pin */
+  GPIO_InitStruct.Pin = toggle_pin_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(toggle_pin_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : CEC_CK_MCO1_Pin */
   GPIO_InitStruct.Pin = CEC_CK_MCO1_Pin;
@@ -336,6 +355,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.Alternate = GPIO_AF0_MCO;
   HAL_GPIO_Init(CEC_CK_MCO1_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  HAL_I2CEx_EnableFastModePlus(SYSCFG_PMCR_I2C_PB8_FMP);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(wake_up_pin_EXTI_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(wake_up_pin_EXTI_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
