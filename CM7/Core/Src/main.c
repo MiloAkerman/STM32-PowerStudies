@@ -82,7 +82,21 @@ int _write(int file, char *ptr, int len) {
     return len;
 }
 
-int16_t audio_buffer[BUFFER_SIZE];
+float calculate_decibel(int16_t *buffer, size_t size) {
+    float sum = 0.0f;
+
+    for (size_t i = 0; i < size; i++) {
+        float voltage = (float)buffer[i] / 32768.0f; // Normalize 16-bit value
+        sum += voltage * voltage;
+    }
+
+    float rms = sqrtf(sum / size);
+    float spl = 20.0f * log10f(rms / REFERENCE_VOLTAGE);
+
+    return spl;
+}
+
+int16_t audio_buffer[BUFFER_SIZE] __attribute__((section(".DATA_RAM_D3")));
 /* USER CODE END 0 */
 
 /**
@@ -93,7 +107,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+	//memset(audio_buffer, 0xAA, sizeof(audio_buffer)); // Initialize buffer
   /* USER CODE END 1 */
 /* USER CODE BEGIN Boot_Mode_Sequence_0 */
 #if defined(DUAL_CORE_BOOT_SYNC_SEQUENCE)
@@ -152,30 +166,81 @@ Error_Handler();
 /* USER CODE END Boot_Mode_Sequence_2 */
 
   /* USER CODE BEGIN SysInit */
+	// Manually power up the mic
+	__HAL_RCC_GPIOF_CLK_ENABLE();
 
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+	GPIO_InitStruct.Pin = GPIO_PIN_10;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
+
+	HAL_GPIO_WritePin(GPIOF, GPIO_PIN_10, GPIO_PIN_SET);  // Power ON microphone
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_BDMA_Init();
+  MX_DMA_Init();
   MX_USART1_UART_Init();
+  for (int i = 0; i < 10; i++) {
+	  printf("[%d]: %d\r\n", i, audio_buffer[i]);
+  }
   MX_SAI4_Init();
   MX_X_CUBE_AI_Init();
+
   /* USER CODE BEGIN 2 */
 
+  printf("Starting SAI DMA...\r\n");
+  if (HAL_SAI_Receive_DMA(&hsai_BlockA4, (uint8_t *)audio_buffer, sizeof(audio_buffer)) != HAL_OK) {
+	  printf("SAI DMA initialization failed! Error: %ld\r\n", hsai_BlockA4.ErrorCode);
+  } else {
+	  printf("SAI DMA started successfully.\r\n");
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  printf("Tick\r\n");
+	  SCB_InvalidateDCache_by_Addr((uint32_t*)audio_buffer, BUFFER_SIZE);
+
+	  printf("--------------------------\r\n");
+	  printf("SAI Clock Output: 0x%08lx\r\n", HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_2));
+	  printf("SAI State: %d \r\n", HAL_SAI_GetState(&hsai_BlockA4));
+	  printf("SAI Error: %lu \r\n", HAL_SAI_GetError(&hsai_BlockA4));
+	  printf("SAI Data Register: 0x%08lx\r\n", SAI4_Block_A->DR);  // this should change over time if data is coming in
+	  printf("DMA State: %d \r\n", HAL_DMA_GetState(&hdma_sai4_a));
+	  printf("DMA Error: %lu \r\n", HAL_DMA_GetError(&hdma_sai4_a));
+	  printf("Pointer location: %d \r\n", audio_buffer);
+	  printf("Audio Buffer Data:\r\n");
+	  for (int i = 0; i < 10; i++) {
+		  printf("[%d]: %d\r\n", i, audio_buffer[i]);
+	  }
+	  float decibel_level = calculate_decibel(audio_buffer, BUFFER_SIZE);
+	  printf("SPL: %.2f dB\r\n", decibel_level);
+	  HAL_Delay(1000);
     /* USER CODE END WHILE */
 
 	//MX_X_CUBE_AI_Process();
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
+}
+
+void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
+	printf("SAI Rx complete callback triggered!\r\n");
+
+	// Invalidate DCache before reading buffer
+	SCB_InvalidateDCache_by_Addr((uint32_t*)audio_buffer, BUFFER_SIZE);
+
+	for (int i = 0; i < 10; i++) {
+		printf("[%d]: 0x%02X\r\n", i, audio_buffer[i]);
+	}
+}
+
+void HAL_SAI_ErrorCallback(SAI_HandleTypeDef *hsai) {
+	printf("SAI ERROR :(\r\n");
 }
 
 /**
@@ -264,7 +329,7 @@ static void MX_SAI4_Init(void)
   hsai_BlockA4.Init.OutputDrive = SAI_OUTPUTDRIVE_DISABLE;
   hsai_BlockA4.Init.NoDivider = SAI_MASTERDIVIDER_ENABLE;
   hsai_BlockA4.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_EMPTY;
-  hsai_BlockA4.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_192K;
+  hsai_BlockA4.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_16K;
   hsai_BlockA4.Init.SynchroExt = SAI_SYNCEXT_DISABLE;
   hsai_BlockA4.Init.MonoStereoMode = SAI_STEREOMODE;
   hsai_BlockA4.Init.CompandingMode = SAI_NOCOMPANDING;
@@ -280,13 +345,14 @@ static void MX_SAI4_Init(void)
   hsai_BlockA4.SlotInit.FirstBitOffset = 0;
   hsai_BlockA4.SlotInit.SlotSize = SAI_SLOTSIZE_DATASIZE;
   hsai_BlockA4.SlotInit.SlotNumber = 1;
-  hsai_BlockA4.SlotInit.SlotActive = 0x00000000;
+  hsai_BlockA4.SlotInit.SlotActive = SAI_SLOTACTIVE_0;
   if (HAL_SAI_Init(&hsai_BlockA4) != HAL_OK)
   {
     Error_Handler();
   }
   /* USER CODE BEGIN SAI4_Init 2 */
-
+  __HAL_RCC_PLL3_ENABLE();
+  __HAL_RCC_SAI4_CLK_ENABLE();
   /* USER CODE END SAI4_Init 2 */
 
 }
@@ -342,18 +408,24 @@ static void MX_USART1_UART_Init(void)
 /**
   * Enable DMA controller clock
   */
-static void MX_BDMA_Init(void)
+void MX_DMA_Init(void)
 {
+    __HAL_RCC_DMA2_CLK_ENABLE();
 
-  /* DMA controller clock enable */
-  __HAL_RCC_BDMA_CLK_ENABLE();
+    hdma_sai4_a.Instance = DMA2_Stream0;
+    hdma_sai4_a.Init.Direction = DMA_PERIPH_TO_MEMORY;
+    hdma_sai4_a.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_sai4_a.Init.MemInc = DMA_MINC_ENABLE;
+    hdma_sai4_a.Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;
+    hdma_sai4_a.Init.MemDataAlignment = DMA_MDATAALIGN_HALFWORD;
+    hdma_sai4_a.Init.Mode = DMA_CIRCULAR;
+    hdma_sai4_a.Init.Priority = DMA_PRIORITY_HIGH;
+    HAL_DMA_Init(&hdma_sai4_a);
 
-  /* DMA interrupt init */
-  /* BDMA_Channel0_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(BDMA_Channel0_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(BDMA_Channel0_IRQn);
-
+    __HAL_LINKDMA(&hsai_BlockA4, hdmarx, hdma_sai4_a);
 }
+
+
 
 /**
   * @brief GPIO Initialization Function
@@ -372,6 +444,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
 
   /*Configure GPIO pin : CEC_CK_MCO1_Pin */
@@ -384,10 +457,29 @@ static void MX_GPIO_Init(void)
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
+  // ---- PB2: SAI4_SD_A (PDM data in) ----
+  GPIO_InitStruct.Pin = GPIO_PIN_2;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF10_SAI4;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  // ---- PE2: SAI4_SCK_A (bit clock out to mic) ----
+  GPIO_InitStruct.Pin = GPIO_PIN_2;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF10_SAI4;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
+  // (Optional) PE4: SAI4_FS_A if needed
+  GPIO_InitStruct.Pin = GPIO_PIN_4;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
-/* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
 

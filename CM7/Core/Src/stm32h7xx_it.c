@@ -56,6 +56,7 @@
 
 /* External variables --------------------------------------------------------*/
 extern DMA_HandleTypeDef hdma_sai4_a;
+extern SAI_HandleTypeDef hsai_BlockA4;
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
@@ -190,7 +191,6 @@ void SysTick_Handler(void)
 
   /* USER CODE END SysTick_IRQn 1 */
 }
-
 /******************************************************************************/
 /* STM32H7xx Peripheral Interrupt Handlers                                    */
 /* Add here the Interrupt Handlers for the used peripherals.                  */
@@ -211,7 +211,18 @@ void BDMA_Channel0_IRQHandler(void)
 
   /* USER CODE END BDMA_Channel0_IRQn 1 */
 }
-
 /* USER CODE BEGIN 1 */
+/**
+  * @brief This function handles SAI4 global interrupt.
+  */
+void SAI4_IRQHandler(void)
+{
+  /* USER CODE BEGIN SAI4_IRQn 0 */
+	HAL_SAI_IRQHandler(&hsai_BlockA4);
+  /* USER CODE END SAI4_IRQn 0 */
 
+  /* USER CODE BEGIN SAI4_IRQn 1 */
+
+  /* USER CODE END SAI4_IRQn 1 */
+}
 /* USER CODE END 1 */

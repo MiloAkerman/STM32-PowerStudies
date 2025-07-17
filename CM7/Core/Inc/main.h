@@ -31,7 +31,7 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#define BUFFER_SIZE 1024  // Size of the audio buffer
+#define BUFFER_SIZE 4096 // Size of the audio buffer
 #define REFERENCE_VOLTAGE 0.00002f
 /* USER CODE END Includes */
 
