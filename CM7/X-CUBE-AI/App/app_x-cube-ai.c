@@ -194,6 +194,7 @@ int acquire_and_process_data(ai_i8* data[], int16_t* pcm_buffer)
     memset(mel_spec, 0, sizeof(mel_spec));
 
     // call DSP pipeline for PCMBuffer -> mel_spec
+    printf("Calculating mel spectrogram...\n");
     int n_frames = calculate_mel_spectrogram((const int16_t *)pcm_buffer, sizeof(pcm_buffer)/sizeof(int16_t), mel_spec,
                                              20); // max columns
 
@@ -205,23 +206,23 @@ int acquire_and_process_data(ai_i8* data[], int16_t* pcm_buffer)
     // normalize to [0, 1]
     normalize_spectrogram(mel_spec, config.n_mels, n_frames);
 
-    // dump to CSV
-	FILE *f = fopen("spectrogram.csv", "w");
-	if (!f) {
-		perror("Failed to open spectrogram.csv");
-		return -1;
-	}
-
-	for (int i = 0; i < 64; ++i) {
-		for (int j = 0; j < 20; ++j) {
-			fprintf(f, "%.6f", mel_spec[i * 20 + j]);
-			if (j < 20 - 1) fprintf(f, ",");
-		}
-		fprintf(f, "\n");
-	}
-
-	fclose(f);
-	printf("Spectrogram saved to spectrogram.csv\n");
+//    // dump to CSV
+//	FILE *f = fopen("spectrogram.csv", "w");
+//	if (!f) {
+//		perror("Failed to open spectrogram.csv");
+//		return -1;
+//	}
+//
+//	for (int i = 0; i < 64; ++i) {
+//		for (int j = 0; j < 20; ++j) {
+//			fprintf(f, "%.6f", mel_spec[i * 20 + j]);
+//			if (j < 20 - 1) fprintf(f, ",");
+//		}
+//		fprintf(f, "\n");
+//	}
+//
+//	fclose(f);
+//	printf("Spectrogram saved to spectrogram.csv\n");
 
 
     float *dst = (float *)data[0];

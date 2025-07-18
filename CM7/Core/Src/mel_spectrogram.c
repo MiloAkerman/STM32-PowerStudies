@@ -3,6 +3,7 @@
 #include "arm_math.h"
 #include "mel_filterbank.h"
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 // NEED TO INCLUDE ON STM32 BOARD LATER using installed libraries
@@ -56,7 +57,6 @@ int calculate_mel_spectrogram(const int16_t *pcm_data, uint32_t pcm_size, float 
 {
     if (!pcm_data || !spectrogram)
         return -1;
-
     const uint16_t n_fft = cfg.fft_size;
     const uint16_t hop = cfg.hop_length;
     const uint16_t fft_bins = n_fft / 2 + 1;
