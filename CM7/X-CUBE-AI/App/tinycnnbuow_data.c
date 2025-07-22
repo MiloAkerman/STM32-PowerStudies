@@ -2,7 +2,7 @@
   ******************************************************************************
   * @file    tinycnnbuow_data.c
   * @author  AST Embedded Analytics Research Platform
-  * @date    2025-07-14T10:34:10-0700
+  * @date    2025-07-21T16:49:16-0700
   * @brief   AI Tool Automatic Code Generator for Embedded NN computing
   ******************************************************************************
   * @attention

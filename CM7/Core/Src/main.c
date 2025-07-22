@@ -181,14 +181,10 @@ Error_Handler();
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
+  MX_BDMA_Init();
   MX_USART1_UART_Init();
-  for (int i = 0; i < 10; i++) {
-	  printf("[%d]: %d\r\n", i, audio_buffer[i]);
-  }
   MX_SAI4_Init();
   MX_X_CUBE_AI_Init();
-
   /* USER CODE BEGIN 2 */
 
   printf("Starting SAI DMA...\r\n");
@@ -197,22 +193,27 @@ Error_Handler();
   } else {
 	  printf("SAI DMA started successfully.\r\n");
   }
+
+  audio_buffer[0] = 5;
+  audio_buffer[1] = 6;
+  audio_buffer[2] = 7;
+  audio_buffer[3] = 8;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  SCB_InvalidateDCache_by_Addr((uint32_t*)audio_buffer, BUFFER_SIZE);
+	  //SCB_InvalidateDCache_by_Addr((uint32_t*)audio_buffer, BUFFER_SIZE);
 
 	  printf("--------------------------\r\n");
-	  printf("SAI Clock Output: 0x%08lx\r\n", HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_2));
+	  //printf("SAI Clock Output: 0x%08d\r\n", HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_2));
 	  printf("SAI State: %d \r\n", HAL_SAI_GetState(&hsai_BlockA4));
 	  printf("SAI Error: %lu \r\n", HAL_SAI_GetError(&hsai_BlockA4));
-	  printf("SAI Data Register: 0x%08lx\r\n", SAI4_Block_A->DR);  // this should change over time if data is coming in
+	  printf("SAI Buffer Address: 0x%08lx\r\n", SAI4_Block_A->DR);  // this should change over time if data is coming in
 	  printf("DMA State: %d \r\n", HAL_DMA_GetState(&hdma_sai4_a));
 	  printf("DMA Error: %lu \r\n", HAL_DMA_GetError(&hdma_sai4_a));
-	  printf("Pointer location: %d \r\n", audio_buffer);
+	  printf("Pointer location: 0x%08lx\r\n", audio_buffer);
 	  printf("Audio Buffer Data:\r\n");
 	  for (int i = 0; i < 10; i++) {
 		  printf("[%d]: %d\r\n", i, audio_buffer[i]);
@@ -222,25 +223,10 @@ Error_Handler();
 	  HAL_Delay(1000);
     /* USER CODE END WHILE */
 
-	//MX_X_CUBE_AI_Process();
+  //MX_X_CUBE_AI_Process();
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
-}
-
-void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
-	printf("SAI Rx complete callback triggered!\r\n");
-
-	// Invalidate DCache before reading buffer
-	SCB_InvalidateDCache_by_Addr((uint32_t*)audio_buffer, BUFFER_SIZE);
-
-	for (int i = 0; i < 10; i++) {
-		printf("[%d]: 0x%02X\r\n", i, audio_buffer[i]);
-	}
-}
-
-void HAL_SAI_ErrorCallback(SAI_HandleTypeDef *hsai) {
-	printf("SAI ERROR :(\r\n");
 }
 
 /**
@@ -301,7 +287,6 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  HAL_RCC_MCOConfig(RCC_MCO1, RCC_MCO1SOURCE_HSI, RCC_MCODIV_1);
 }
 
 /**
@@ -313,7 +298,6 @@ static void MX_SAI4_Init(void)
 {
 
   /* USER CODE BEGIN SAI4_Init 0 */
-
   /* USER CODE END SAI4_Init 0 */
 
   /* USER CODE BEGIN SAI4_Init 1 */
@@ -321,23 +305,22 @@ static void MX_SAI4_Init(void)
   /* USER CODE END SAI4_Init 1 */
   hsai_BlockA4.Instance = SAI4_Block_A;
   hsai_BlockA4.Init.Protocol = SAI_FREE_PROTOCOL;
-  hsai_BlockA4.Init.AudioMode = SAI_MODEMASTER_RX;
-  hsai_BlockA4.Init.DataSize = SAI_DATASIZE_16;
+  hsai_BlockA4.Init.AudioMode = SAI_MODESLAVE_RX;
+  hsai_BlockA4.Init.DataSize = SAI_DATASIZE_8;
   hsai_BlockA4.Init.FirstBit = SAI_FIRSTBIT_MSB;
   hsai_BlockA4.Init.ClockStrobing = SAI_CLOCKSTROBING_FALLINGEDGE;
   hsai_BlockA4.Init.Synchro = SAI_ASYNCHRONOUS;
   hsai_BlockA4.Init.OutputDrive = SAI_OUTPUTDRIVE_DISABLE;
-  hsai_BlockA4.Init.NoDivider = SAI_MASTERDIVIDER_ENABLE;
+  hsai_BlockA4.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_DISABLE;
   hsai_BlockA4.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_EMPTY;
-  hsai_BlockA4.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_16K;
   hsai_BlockA4.Init.SynchroExt = SAI_SYNCEXT_DISABLE;
   hsai_BlockA4.Init.MonoStereoMode = SAI_STEREOMODE;
   hsai_BlockA4.Init.CompandingMode = SAI_NOCOMPANDING;
   hsai_BlockA4.Init.TriState = SAI_OUTPUT_NOTRELEASED;
-  hsai_BlockA4.Init.PdmInit.Activation = ENABLE;
+  hsai_BlockA4.Init.PdmInit.Activation = DISABLE;
   hsai_BlockA4.Init.PdmInit.MicPairsNbr = 1;
   hsai_BlockA4.Init.PdmInit.ClockEnable = SAI_PDM_CLOCK1_ENABLE;
-  hsai_BlockA4.FrameInit.FrameLength = 16;
+  hsai_BlockA4.FrameInit.FrameLength = 8;
   hsai_BlockA4.FrameInit.ActiveFrameLength = 1;
   hsai_BlockA4.FrameInit.FSDefinition = SAI_FS_STARTFRAME;
   hsai_BlockA4.FrameInit.FSPolarity = SAI_FS_ACTIVE_LOW;
@@ -345,7 +328,7 @@ static void MX_SAI4_Init(void)
   hsai_BlockA4.SlotInit.FirstBitOffset = 0;
   hsai_BlockA4.SlotInit.SlotSize = SAI_SLOTSIZE_DATASIZE;
   hsai_BlockA4.SlotInit.SlotNumber = 1;
-  hsai_BlockA4.SlotInit.SlotActive = SAI_SLOTACTIVE_0;
+  hsai_BlockA4.SlotInit.SlotActive = 0x00000000;
   if (HAL_SAI_Init(&hsai_BlockA4) != HAL_OK)
   {
     Error_Handler();
@@ -408,24 +391,18 @@ static void MX_USART1_UART_Init(void)
 /**
   * Enable DMA controller clock
   */
-void MX_DMA_Init(void)
+static void MX_BDMA_Init(void)
 {
-    __HAL_RCC_DMA2_CLK_ENABLE();
 
-    hdma_sai4_a.Instance = DMA2_Stream0;
-    hdma_sai4_a.Init.Direction = DMA_PERIPH_TO_MEMORY;
-    hdma_sai4_a.Init.PeriphInc = DMA_PINC_DISABLE;
-    hdma_sai4_a.Init.MemInc = DMA_MINC_ENABLE;
-    hdma_sai4_a.Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;
-    hdma_sai4_a.Init.MemDataAlignment = DMA_MDATAALIGN_HALFWORD;
-    hdma_sai4_a.Init.Mode = DMA_CIRCULAR;
-    hdma_sai4_a.Init.Priority = DMA_PRIORITY_HIGH;
-    HAL_DMA_Init(&hdma_sai4_a);
+  /* DMA controller clock enable */
+  __HAL_RCC_BDMA_CLK_ENABLE();
 
-    __HAL_LINKDMA(&hsai_BlockA4, hdmarx, hdma_sai4_a);
+  /* DMA interrupt init */
+  /* BDMA_Channel0_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(BDMA_Channel0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(BDMA_Channel0_IRQn);
+
 }
-
-
 
 /**
   * @brief GPIO Initialization Function
@@ -434,26 +411,14 @@ void MX_DMA_Init(void)
   */
 static void MX_GPIO_Init(void)
 {
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
   /* USER CODE BEGIN MX_GPIO_Init_1 */
-
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOD_CLK_ENABLE();
-  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
-  __HAL_RCC_GPIOH_CLK_ENABLE();
-
-  /*Configure GPIO pin : CEC_CK_MCO1_Pin */
-  GPIO_InitStruct.Pin = CEC_CK_MCO1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF0_MCO;
-  HAL_GPIO_Init(CEC_CK_MCO1_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -480,7 +445,34 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
+/* USER CODE BEGIN 4 */
+/**
+  * @brief  Rx Transfer completed callbacks.
+  * @param  hsai : pointer to a SAI_HandleTypeDef structure that contains
+  *                the configuration information for SAI module.
+  * @retval None
+  */
+void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai)
+{
+  /* NOTE : This function Should not be modified, when the callback is needed,
+            the HAL_SAI_RxCpltCallback could be implemented in the user file
+   */
+	printf("Buffer Full!! =======================================");
+}
 
+/**
+  * @brief  Rx Transfer Half completed callbacks
+  * @param  hsai : pointer to a SAI_HandleTypeDef structure that contains
+  *                the configuration information for SAI module.
+  * @retval None
+  */
+void HAL_SAI_RxHalfCpltCallback(SAI_HandleTypeDef *hsai)
+{
+  /* NOTE : This function Should not be modified, when the callback is needed,
+            the HAL_SAI_RxHalfCpltCallback could be implenetd in the user file
+   */
+	printf("Buffer Half Full!! =======================================");
+}
 /* USER CODE END 4 */
 
 /**

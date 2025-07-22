@@ -37,7 +37,7 @@ extern "C" {
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
-
+extern SAI_HandleTypeDef hsai_BlockA4;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
@@ -58,20 +58,6 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define OSC32_OUT_Pin GPIO_PIN_15
-#define OSC32_OUT_GPIO_Port GPIOC
-#define OSC32_IN_Pin GPIO_PIN_14
-#define OSC32_IN_GPIO_Port GPIOC
-#define STLINK_TX_Pin GPIO_PIN_10
-#define STLINK_TX_GPIO_Port GPIOA
-#define STLINK_RX_Pin GPIO_PIN_9
-#define STLINK_RX_GPIO_Port GPIOA
-#define CEC_CK_MCO1_Pin GPIO_PIN_8
-#define CEC_CK_MCO1_GPIO_Port GPIOA
-#define OSC_OUT_Pin GPIO_PIN_1
-#define OSC_OUT_GPIO_Port GPIOH
-#define OSC_IN_Pin GPIO_PIN_0
-#define OSC_IN_GPIO_Port GPIOH
 
 /* USER CODE BEGIN Private defines */
 
