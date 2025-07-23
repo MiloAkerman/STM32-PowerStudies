@@ -1012,44 +1012,44 @@
   ],
   "environment": {
     "generated_model": {
-      "generated_time": "2025-07-15T10:09:29-0700",
+      "generated_time": "2025-07-23T13:33:24-0700",
       "model_files": [
         {
           "name": "tinycnnbuow_data_params.h",
-          "signature": "0x137f525e8c58d32396c353bad27189bc"
+          "signature": "0x838210cbf9f71312b65f0247c1e8ccd5"
         },
         {
           "name": "tinycnnbuow_data_params.c",
-          "signature": "0xc84b9ca8fc9cd6576281568982324500"
+          "signature": "0x8b7800310c81234d74696a4b90d56f16"
         },
         {
           "name": "tinycnnbuow_data.h",
-          "signature": "0x7405e506c5598fa33821915559cff2c7"
+          "signature": "0x4fa8f15b1041a62ca4720bf94cf72717"
         },
         {
           "name": "tinycnnbuow_data.c",
-          "signature": "0x75952eb8148fbaeb23a41f16e3aa6185"
+          "signature": "0x38d6e90243ee805d1986ff660a0d71e2"
         },
         {
           "name": "tinycnnbuow_config.h",
-          "signature": "0x2eac8158103fb4d8e0e7c08a554e611e"
+          "signature": "0xdb979757092dd98f6ed98bcdd304d7df"
         },
         {
           "name": "tinycnnbuow.h",
-          "signature": "0x2ddad20b1491e8f9cd25e9bd03fd5482"
+          "signature": "0x13f4e2d5a9f6bc90ebdc0a5a0d85bc0f"
         },
         {
           "name": "tinycnnbuow.c",
-          "signature": "0x7953f5ba46542de213dffb1a76109a4e"
+          "signature": "0xb7e58b9df3b1e9918b26eae7b9a5fd1f"
         }
       ],
       "name": "tinycnnbuow"
     },
-    "network_signature": "0x840374fd941fa8d5",
+    "network_signature": "0x4005361c90099f6b",
     "test_name": "",
     "tools": [
       {
-        "arguments": "generate --target stm32h7 --name tinycnnbuow -m C:/Users/milov/Documents/Work/Research/E4E/buow_tinycnn.tflite --compression none --verbosity 1 --workspace C:/Users/milov/AppData/Local/Temp/mxAI_workspace224014491900012848395683248082409 --output C:/Users/milov/.stm32cubemx/tinycnnbuow_output",
+        "arguments": "generate --target stm32h7 --name tinycnnbuow -m C:/Users/milov/Documents/Work/Research/E4E/buow_tinycnn.tflite --compression none --verbosity 1 --workspace C:/Users/milov/AppData/Local/Temp/mxAI_workspace152836739040001839910818819112569 --output C:/Users/milov/.stm32cubemx/tinycnnbuow_output",
         "environment": [
           "STATS_TYPE=X-CUBE-AI"
         ],

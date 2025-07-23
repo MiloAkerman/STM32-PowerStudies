@@ -166,17 +166,7 @@ Error_Handler();
 /* USER CODE END Boot_Mode_Sequence_2 */
 
   /* USER CODE BEGIN SysInit */
-	// Manually power up the mic
-	__HAL_RCC_GPIOF_CLK_ENABLE();
 
-	GPIO_InitTypeDef GPIO_InitStruct = {0};
-	GPIO_InitStruct.Pin = GPIO_PIN_10;
-	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
-
-	HAL_GPIO_WritePin(GPIOF, GPIO_PIN_10, GPIO_PIN_SET);  // Power ON microphone
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -213,7 +203,7 @@ Error_Handler();
 	  printf("SAI Buffer Address: 0x%08lx\r\n", SAI4_Block_A->DR);  // this should change over time if data is coming in
 	  printf("DMA State: %d \r\n", HAL_DMA_GetState(&hdma_sai4_a));
 	  printf("DMA Error: %lu \r\n", HAL_DMA_GetError(&hdma_sai4_a));
-	  printf("Pointer location: 0x%08lx\r\n", audio_buffer);
+	  printf("Pointer location: %p \r\n", audio_buffer);
 	  printf("Audio Buffer Data:\r\n");
 	  for (int i = 0; i < 10; i++) {
 		  printf("[%d]: %d\r\n", i, audio_buffer[i]);
@@ -248,6 +238,10 @@ void SystemClock_Config(void)
 
   while(!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {}
 
+  /** Macro to configure the PLL clock source
+  */
+  __HAL_RCC_PLL_PLLSOURCE_CONFIG(RCC_PLLSOURCE_HSE);
+
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
@@ -255,16 +249,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.HSIState = RCC_HSI_DIV1;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLM = 5;
-  RCC_OscInitStruct.PLL.PLLN = 48;
-  RCC_OscInitStruct.PLL.PLLP = 2;
-  RCC_OscInitStruct.PLL.PLLQ = 5;
-  RCC_OscInitStruct.PLL.PLLR = 2;
-  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_2;
-  RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOWIDE;
-  RCC_OscInitStruct.PLL.PLLFRACN = 0;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -305,19 +290,19 @@ static void MX_SAI4_Init(void)
   /* USER CODE END SAI4_Init 1 */
   hsai_BlockA4.Instance = SAI4_Block_A;
   hsai_BlockA4.Init.Protocol = SAI_FREE_PROTOCOL;
-  hsai_BlockA4.Init.AudioMode = SAI_MODESLAVE_RX;
-  hsai_BlockA4.Init.DataSize = SAI_DATASIZE_8;
+  hsai_BlockA4.Init.AudioMode = SAI_MODEMASTER_RX;
+  hsai_BlockA4.Init.DataSize = SAI_DATASIZE_16;
   hsai_BlockA4.Init.FirstBit = SAI_FIRSTBIT_MSB;
   hsai_BlockA4.Init.ClockStrobing = SAI_CLOCKSTROBING_FALLINGEDGE;
   hsai_BlockA4.Init.Synchro = SAI_ASYNCHRONOUS;
   hsai_BlockA4.Init.OutputDrive = SAI_OUTPUTDRIVE_DISABLE;
+  hsai_BlockA4.Init.NoDivider = SAI_MCK_OVERSAMPLING_DISABLE;
   hsai_BlockA4.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_DISABLE;
   hsai_BlockA4.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_EMPTY;
-  hsai_BlockA4.Init.SynchroExt = SAI_SYNCEXT_DISABLE;
+  hsai_BlockA4.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_16K;
   hsai_BlockA4.Init.MonoStereoMode = SAI_STEREOMODE;
   hsai_BlockA4.Init.CompandingMode = SAI_NOCOMPANDING;
-  hsai_BlockA4.Init.TriState = SAI_OUTPUT_NOTRELEASED;
-  hsai_BlockA4.Init.PdmInit.Activation = DISABLE;
+  hsai_BlockA4.Init.PdmInit.Activation = ENABLE;
   hsai_BlockA4.Init.PdmInit.MicPairsNbr = 1;
   hsai_BlockA4.Init.PdmInit.ClockEnable = SAI_PDM_CLOCK1_ENABLE;
   hsai_BlockA4.FrameInit.FrameLength = 8;
@@ -412,35 +397,35 @@ static void MX_BDMA_Init(void)
 static void MX_GPIO_Init(void)
 {
   /* USER CODE BEGIN MX_GPIO_Init_1 */
-	GPIO_InitTypeDef GPIO_InitStruct = {0};
+	//GPIO_InitTypeDef GPIO_InitStruct = {0};
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
-  // ---- PB2: SAI4_SD_A (PDM data in) ----
-  GPIO_InitStruct.Pin = GPIO_PIN_2;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF10_SAI4;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  // ---- PE2: SAI4_SCK_A (bit clock out to mic) ----
-  GPIO_InitStruct.Pin = GPIO_PIN_2;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF10_SAI4;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
-
-  // (Optional) PE4: SAI4_FS_A if needed
-  GPIO_InitStruct.Pin = GPIO_PIN_4;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+//  // ---- PC1: SAI4_SD_A (PDM data in) ----
+//  GPIO_InitStruct.Pin = GPIO_PIN_1;
+//  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+//  GPIO_InitStruct.Pull = GPIO_NOPULL;
+//  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+//  GPIO_InitStruct.Alternate = GPIO_AF10_SAI4;
+//  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+//
+//  // ---- PE2: SAI4_SCK_A (bit clock out to mic) ----
+//  GPIO_InitStruct.Pin = GPIO_PIN_2;
+//  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+//  GPIO_InitStruct.Pull = GPIO_NOPULL;
+//  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+//  GPIO_InitStruct.Alternate = GPIO_AF10_SAI4;
+//  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+//
+//  // (Optional) PE4: SAI4_FS_A if needed
+//  GPIO_InitStruct.Pin = GPIO_PIN_4;
+//  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /* USER CODE END MX_GPIO_Init_2 */
 }
