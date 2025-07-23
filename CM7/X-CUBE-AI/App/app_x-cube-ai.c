@@ -59,6 +59,7 @@
 
 #include "mel_spectrogram.h"
 #include "mel_filterbank.h"
+#include "mel_spec_buffer.h"
 #include "pcm_buffer.h"
 
 
@@ -173,39 +174,39 @@ static int ai_run(void)
   return 0;
 }
 /* USER CODE BEGIN 2 */
-int acquire_and_process_data(ai_i8* data[], int16_t* pcm_buffer)
+int acquire_and_process_data(ai_i8* data[]) //, int16_t* pcm_buffer)
 {
 
-  // TODO: move spectrogram conversion to a different place
-
-  // define configuration - match trained model
-    MelSpectrogramConfig_t config = {.fft_size = 512,
-                                     .hop_length = 256,
-                                     .n_mels = 64,
-                                     .sample_rate = 16000.0f,
-                                     .f_min = 0.0f,
-                                     .f_max = 8000.0f};
-
-    mel_spectrogram_init(&config);
-
-    // output spectrogram buffer
-    // n_mels x n_frames
-    static float mel_spec[64 * 20]; // 64 mel bands, 20 frames (for 512 samples, hop_length=256)
-    // zero out mel spectrogram buffer
-    memset(mel_spec, 0, sizeof(mel_spec));
-
-    // call DSP pipeline for PCMBuffer -> mel_spec
-    printf("Calculating mel spectrogram...\n");
-    int n_frames = calculate_mel_spectrogram((const int16_t *)pcm_buffer, test_pcm_buffer_size, mel_spec,
-                                             20); // max columns
-
-    if (n_frames < 0) {
-	   printf("Spectrogram calculation failed.\n");
-	   return -1;
-   }
-
-    // normalize to [0, 1]
-    normalize_spectrogram(mel_spec, config.n_mels, n_frames);
+//  // TODO: move spectrogram conversion to a different place
+//
+//  // define configuration - match trained model
+//    MelSpectrogramConfig_t config = {.fft_size = 512,
+//                                     .hop_length = 256,
+//                                     .n_mels = 64,
+//                                     .sample_rate = 16000.0f,
+//                                     .f_min = 0.0f,
+//                                     .f_max = 8000.0f};
+//
+//    mel_spectrogram_init(&config);
+//
+//    // output spectrogram buffer
+//    // n_mels x n_frames
+//    static float mel_spec[64 * 20]; // 64 mel bands, 20 frames (for 512 samples, hop_length=256)
+//    // zero out mel spectrogram buffer
+//    memset(mel_spec, 0, sizeof(mel_spec));
+//
+//    // call DSP pipeline for PCMBuffer -> mel_spec
+//    printf("Calculating mel spectrogram...\n");
+//    int n_frames = calculate_mel_spectrogram((const int16_t *)pcm_buffer, test_pcm_buffer_size, mel_spec,
+//                                             20); // max columns
+//
+//    if (n_frames < 0) {
+//	   printf("Spectrogram calculation failed.\n");
+//	   return -1;
+//   }
+//
+//    // normalize to [0, 1]
+//    normalize_spectrogram(mel_spec, config.n_mels, n_frames);
 
 //    // dump to CSV
 //	FILE *f = fopen("spectrogram.csv", "w");
@@ -229,7 +230,7 @@ int acquire_and_process_data(ai_i8* data[], int16_t* pcm_buffer)
     float *dst = (float *)data[0];
 
     for (int i = 0; i < AI_TINYCNNBUOW_IN_1_SIZE; ++i) {
-        dst[i] = mel_spec[i];  // 64 * 258 = 16512
+        dst[i] = mel_spec_buffer[i];  // 64 * 258 = 16512
     }
 
     return 0;
@@ -267,10 +268,10 @@ int post_process(ai_i8* data[])
         }
 
       printf("Class: %s, Score: %d.%d\n\r", class_names[i], whole_part, predict%100);
-      HAL_Delay(2000);
+      //HAL_Delay(2000);
     }
     printf("Predicted Class: %s\n\r", class_names[max_index]);
-    HAL_Delay(8000);
+    //HAL_Delay(8000);
 
     return 0;
 
@@ -292,7 +293,7 @@ void MX_X_CUBE_AI_Init(void)
 }
 
 /* USER CODE BEGIN 6 */
-void MX_X_CUBE_AI_Process(int16_t *pcm_buffer)
+void MX_X_CUBE_AI_Process()//int16_t *pcm_buffer)
 {
 
   int res = -1;
@@ -302,7 +303,7 @@ void MX_X_CUBE_AI_Process(int16_t *pcm_buffer)
     do {
       /* 1 - acquire and pre-process input data */
       printf("processing data...\r\n");
-      res = acquire_and_process_data(data_ins, pcm_buffer);
+      res = acquire_and_process_data(data_ins);//, pcm_buffer);
       /* 2 - process the data - call inference engine */
       if (res == 0){
     	printf("running inference...\r\n");

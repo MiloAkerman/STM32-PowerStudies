@@ -160,16 +160,17 @@ Error_Handler();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
-
+  //HAL_Delay(5000);
+  MX_X_CUBE_AI_Process();
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
     /* USER CODE END WHILE */
-	MX_X_CUBE_AI_Process(test_pcm_buffer);
-	printf("Processing completed.\r\n");
-	/* USER CODE BEGIN 3 */
-	HAL_Delay(1000); // Delay to avoid flooding the output
+//	MX_X_CUBE_AI_Process();
+//	printf("Processing completed.\r\n");
+//	/* USER CODE BEGIN 3 */
+//	HAL_Delay(1000); // Delay to avoid flooding the output
 	/* USER CODE END 3 */
   }
 }
