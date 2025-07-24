@@ -179,12 +179,6 @@ SECTIONS
   
   .DATA_RAM_D3 :
   {
-	. = ALIGN(8);
-    PROVIDE ( end = . );
-    PROVIDE ( _end = . );
-    . = . + _Min_Heap_Size;
-    . = . + _Min_Stack_Size;
-    . = ALIGN(8);
   } >RAM_D3
 
   /* Remove information from the compiler libraries */

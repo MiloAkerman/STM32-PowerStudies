@@ -121,7 +121,7 @@ int main(void)
   SCB_EnableICache();
 
   /* Enable D-Cache---------------------------------------------------------*/
-  SCB_EnableDCache();
+  //SCB_EnableDCache();
 
 /* USER CODE BEGIN Boot_Mode_Sequence_1 */
 #if defined(DUAL_CORE_BOOT_SYNC_SEQUENCE)
@@ -176,6 +176,7 @@ Error_Handler();
   MX_SAI4_Init();
   MX_X_CUBE_AI_Init();
   /* USER CODE BEGIN 2 */
+  //SCB_InvalidateDCache_by_Addr((uint32_t*)(((uint32_t)audio_buffer) & ~(uint32_t)0x1F), sizeof(audio_buffer)+32);
 
   printf("Starting SAI DMA...\r\n");
   if (HAL_SAI_Receive_DMA(&hsai_BlockA4, (uint8_t *)audio_buffer, sizeof(audio_buffer)) != HAL_OK) {
@@ -194,26 +195,9 @@ Error_Handler();
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  //SCB_InvalidateDCache_by_Addr((uint32_t*)audio_buffer, BUFFER_SIZE);
-
-	  printf("--------------------------\r\n");
-	  //printf("SAI Clock Output: 0x%08d\r\n", HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_2));
-	  printf("SAI State: %d \r\n", HAL_SAI_GetState(&hsai_BlockA4));
-	  printf("SAI Error: %lu \r\n", HAL_SAI_GetError(&hsai_BlockA4));
-	  printf("SAI Buffer Address: 0x%08lx\r\n", SAI4_Block_A->DR);  // this should change over time if data is coming in
-	  printf("DMA State: %d \r\n", HAL_DMA_GetState(&hdma_sai4_a));
-	  printf("DMA Error: %lu \r\n", HAL_DMA_GetError(&hdma_sai4_a));
-	  printf("Pointer location: %p \r\n", audio_buffer);
-	  printf("Audio Buffer Data:\r\n");
-	  for (int i = 0; i < 10; i++) {
-		  printf("[%d]: %d\r\n", i, audio_buffer[i]);
-	  }
-	  float decibel_level = calculate_decibel(audio_buffer, BUFFER_SIZE);
-	  printf("SPL: %.2f dB\r\n", decibel_level);
-	  HAL_Delay(1000);
     /* USER CODE END WHILE */
 
-  //MX_X_CUBE_AI_Process();
+	  //MX_X_CUBE_AI_Process();
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -305,7 +289,7 @@ static void MX_SAI4_Init(void)
   hsai_BlockA4.Init.PdmInit.Activation = ENABLE;
   hsai_BlockA4.Init.PdmInit.MicPairsNbr = 1;
   hsai_BlockA4.Init.PdmInit.ClockEnable = SAI_PDM_CLOCK1_ENABLE;
-  hsai_BlockA4.FrameInit.FrameLength = 8;
+  hsai_BlockA4.FrameInit.FrameLength = 16;
   hsai_BlockA4.FrameInit.ActiveFrameLength = 1;
   hsai_BlockA4.FrameInit.FSDefinition = SAI_FS_STARTFRAME;
   hsai_BlockA4.FrameInit.FSPolarity = SAI_FS_ACTIVE_LOW;
@@ -313,7 +297,7 @@ static void MX_SAI4_Init(void)
   hsai_BlockA4.SlotInit.FirstBitOffset = 0;
   hsai_BlockA4.SlotInit.SlotSize = SAI_SLOTSIZE_DATASIZE;
   hsai_BlockA4.SlotInit.SlotNumber = 1;
-  hsai_BlockA4.SlotInit.SlotActive = 0x00000000;
+  hsai_BlockA4.SlotInit.SlotActive = 0x00000001;
   if (HAL_SAI_Init(&hsai_BlockA4) != HAL_OK)
   {
     Error_Handler();
@@ -442,7 +426,19 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai)
   /* NOTE : This function Should not be modified, when the callback is needed,
             the HAL_SAI_RxCpltCallback could be implemented in the user file
    */
-	printf("Buffer Full!! =======================================");
+//	printf("Buffer Full!! =======================================\r\n");
+//	printf("SAI State: %d \r\n", HAL_SAI_GetState(&hsai_BlockA4));
+//	printf("SAI Error: %lu \r\n", HAL_SAI_GetError(&hsai_BlockA4));
+//	printf("SAI Buffer Address: 0x%08lx\r\n", SAI4_Block_A->DR);  // this should change over time if data is coming in
+//	printf("DMA State: %d \r\n", HAL_DMA_GetState(&hdma_sai4_a));
+//	printf("DMA Error: %lu \r\n", HAL_DMA_GetError(&hdma_sai4_a));
+//	printf("Pointer location: %p \r\n", audio_buffer);
+//	printf("Audio Buffer Data:\r\n");
+//	for (int i = 0; i < 10; i++) {
+//		printf("[%d]: %d\r\n", i, audio_buffer[i]);
+//	}
+//	float decibel_level = calculate_decibel(audio_buffer, BUFFER_SIZE);
+//	printf("SPL: %.2f dB\r\n", decibel_level);
 }
 
 /**
@@ -456,7 +452,7 @@ void HAL_SAI_RxHalfCpltCallback(SAI_HandleTypeDef *hsai)
   /* NOTE : This function Should not be modified, when the callback is needed,
             the HAL_SAI_RxHalfCpltCallback could be implenetd in the user file
    */
-	printf("Buffer Half Full!! =======================================");
+	//printf("Buffer Half Full!! ==================================\r\n");
 }
 /* USER CODE END 4 */
 
