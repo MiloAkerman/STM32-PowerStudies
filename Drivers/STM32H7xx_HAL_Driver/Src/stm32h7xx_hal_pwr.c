@@ -504,7 +504,7 @@ void HAL_PWR_DisablePVD (void)
   *         GPIOI port.
   * @retval None.
   */
-void HAL_PWR_EnableWakeUpPin (uint32_t WakeUpPinPolarity)
+void HAL_PWR_EnableWakeUpPin(uint32_t WakeUpPinPolarity)
 {
   /* Check the parameters */
   assert_param (IS_PWR_WAKEUP_PIN (WakeUpPinPolarity));
