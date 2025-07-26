@@ -190,23 +190,9 @@ Error_Handler();
   MX_X_CUBE_AI_Init();
   /* USER CODE BEGIN 2 */
 
-// // Testing the power consumption in sleep mode
-// HAL_Delay(1000);
-// HAL_SuspendTick();
-// HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON,PWR_SLEEPENTRY_WFI);
-// HAL_ResumeTick();
-
-  // Test the power consumption in standby mode
-  HAL_Delay(1000);
-  HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);
-  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
-  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
-  HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1);
-  HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
-  HAL_PWR_EnterSTANDBYMode();
-
   HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
 
+  // TODO: Cache invalidation to avoid disabling cache
   //SCB_InvalidateDCache_by_Addr((uint32_t*)(((uint32_t)audio_buffer) & ~(uint32_t)0x1F), sizeof(audio_buffer)+32);
 
   printf("Starting SAI DMA...\r\n");
@@ -216,11 +202,7 @@ Error_Handler();
 	  printf("SAI DMA started successfully.\r\n");
   }
 
-  audio_buffer[0] = 5;
-  audio_buffer[1] = 6;
-  audio_buffer[2] = 7;
-  audio_buffer[3] = 8;
-
+  // TODO: Remove power testing code when done
   //  Testing the power consumption in sleep mode
 //  HAL_Delay(2000);
 //  HAL_SuspendTick();
@@ -234,21 +216,24 @@ Error_Handler();
 
   // Test the power consumption in standby mode
 //  HAL_Delay(2000);
+//  HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);
+//  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
 //  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+//  HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1);
+//	HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
 //  HAL_PWREx_EnterSTANDBYMode(PWR_D2_DOMAIN);
 //  HAL_PWREx_EnterSTANDBYMode(PWR_D1_DOMAIN);
 
   /* USER CODE END 2 */
 
-  /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+//	  if(HAL_GPIO_ReadPin(GPIOJ, GPIO_PIN_0)){
+//		  printf("GPIO INPUT WORKING\n");
+//	  }
     /* USER CODE END WHILE */
-//	if(HAL_GPIO_ReadPin(GPIOJ, GPIO_PIN_0)){
-//	  printf("GPIO INPUT WORKING\n");
-//	}
-  //MX_X_CUBE_AI_Process();
+
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -393,7 +378,7 @@ static void MX_SAI4_Init(void)
   */
 static void MX_SDMMC1_SD_Init(void)
 {
-
+	(void)UNUSED;
   /* USER CODE BEGIN SDMMC1_Init 0 */
 
   /* USER CODE END SDMMC1_Init 0 */
