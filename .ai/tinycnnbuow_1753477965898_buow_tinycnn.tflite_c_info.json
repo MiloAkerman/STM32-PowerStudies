@@ -1012,44 +1012,44 @@
   ],
   "environment": {
     "generated_model": {
-      "generated_time": "2025-07-25T11:41:51-0700",
+      "generated_time": "2025-07-25T14:22:37-0700",
       "model_files": [
         {
-          "name": "tinycnnbuow_data_params.h",
-          "signature": "0x0babe501d0c786e13dd7dac6c01c743c"
+          "name": "tinycnnbuow_1753477965898_data_params.h",
+          "signature": "0x056272655b7e04b4048526e125f87346"
         },
         {
-          "name": "tinycnnbuow_data_params.c",
-          "signature": "0xc43eb4b818b6f40bfe6ae8d5713cb7eb"
+          "name": "tinycnnbuow_1753477965898_data_params.c",
+          "signature": "0xe29c53874f8cc5733b1d81246853ee2e"
         },
         {
-          "name": "tinycnnbuow_data.h",
-          "signature": "0x3f46d5b68fcd6097af7b723b07ebadf3"
+          "name": "tinycnnbuow_1753477965898_data.h",
+          "signature": "0x685524dbffb8ad869ce23cec234aa2b7"
         },
         {
-          "name": "tinycnnbuow_data.c",
-          "signature": "0x4d351c2a6d7d4bc4ebd3f4873dc26fb9"
+          "name": "tinycnnbuow_1753477965898_data.c",
+          "signature": "0x08355483d810ea33acd8a35cf0f8a520"
         },
         {
-          "name": "tinycnnbuow_config.h",
-          "signature": "0x207c712ada30b8020cc8a1522b1e17a4"
+          "name": "tinycnnbuow_1753477965898_config.h",
+          "signature": "0xbfc568142cf5a569ffc4f868da45b675"
         },
         {
-          "name": "tinycnnbuow.h",
-          "signature": "0x9dacb7d18a0780b83d22b4badeee4545"
+          "name": "tinycnnbuow_1753477965898.h",
+          "signature": "0xc0d8f5669408b27e500f75f6212a97ae"
         },
         {
-          "name": "tinycnnbuow.c",
-          "signature": "0x9dee1794f4c83fdfbce7da939614f76a"
+          "name": "tinycnnbuow_1753477965898.c",
+          "signature": "0x30912cfafa32a9a100ef2d8eb458bebc"
         }
       ],
-      "name": "tinycnnbuow"
+      "name": "tinycnnbuow_1753477965898"
     },
-    "network_signature": "0xd68f4f6898e597f5",
+    "network_signature": "0x20c5fa64f2cd283c",
     "test_name": "",
     "tools": [
       {
-        "arguments": "generate --target stm32h7 --name tinycnnbuow -m C:/Users/milov/Documents/Work/Research/E4E/buow_tinycnn.tflite --compression none --verbosity 1 --workspace C:/Users/milov/AppData/Local/Temp/mxAI_workspace795986622850015370425768445500518 --output C:/Users/milov/.stm32cubemx/tinycnnbuow_output",
+        "arguments": "generate --target stm32h7 --name tinycnnbuow_1753477965898 -m C:/Users/milov/Documents/Work/Research/E4E/buow_tinycnn.tflite --compression none --verbosity 1 --workspace C:/Users/milov/AppData/Local/Temp/mxAI_workspace176053902312006642895067417267224 --output C:/Users/milov/.stm32cubemx/tinycnnbuow_1753477965898_output",
         "environment": [
           "STATS_TYPE=X-CUBE-AI"
         ],
@@ -1914,7 +1914,7 @@
       "virtual": false
     },
     {
-      "address": "s_tinycnnbuow_weights_array_u64",
+      "address": "s_tinycnnbuow_1753477965898_weights_array_u64",
       "alignment": 0,
       "attributes": {
         "latency": "UNDEF",
