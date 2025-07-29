@@ -56,6 +56,7 @@
 
 /* External variables --------------------------------------------------------*/
 extern MDMA_HandleTypeDef hmdma_mdma_channel0_sdmmc1_end_data_0;
+extern DMA_HandleTypeDef hdma_sai1_a;
 extern DMA_HandleTypeDef hdma_sai4_a;
 extern SAI_HandleTypeDef hsai_BlockA4;
 extern SD_HandleTypeDef hsd1;
@@ -200,6 +201,20 @@ void SysTick_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32h7xx.s).                    */
 /******************************************************************************/
+
+/**
+  * @brief This function handles DMA1 stream0 global interrupt.
+  */
+void DMA1_Stream0_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA1_Stream0_IRQn 0 */
+
+  /* USER CODE END DMA1_Stream0_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_sai1_a);
+  /* USER CODE BEGIN DMA1_Stream0_IRQn 1 */
+
+  /* USER CODE END DMA1_Stream0_IRQn 1 */
+}
 
 /**
   * @brief This function handles SDMMC1 global interrupt.
