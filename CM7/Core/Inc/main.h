@@ -50,7 +50,7 @@ extern SAI_HandleTypeDef hsai_BlockA4;
 
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
-
+#define AUDIO_IRQ_PREPRIO                    ((uint32_t)0x0E)
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/

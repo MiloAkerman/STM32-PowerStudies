@@ -423,7 +423,7 @@ int32_t WM8994_Init(WM8994_Object_t *pObj, WM8994_Init_t *pInit)
         
         ColdStartup=0;
         /* Add Delay */
-        (void)WM8994_Delay(pObj, 325);
+        (void)WM8994_Delay(pObj, 525);
       }
       else 
       { 

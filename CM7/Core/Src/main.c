@@ -106,7 +106,7 @@ float calculate_decibel(int16_t *buffer, size_t size) {
 }
 
 int16_t input_buffer[AUDIO_BUFFER_SIZE] __attribute__((section(".DATA_RAM_D3")));
-int16_t output_buffer[AUDIO_BUFFER_SIZE] __attribute__((section(".DATA_RAM_D3")));
+int16_t output_buffer[AUDIO_BUFFER_SIZE];
 
 /* PDM Filters params */
 PDM_Filter_Handler_t  PDM_FilterHandler[2];
@@ -174,29 +174,15 @@ int main(void)
   // TODO: Cache invalidation to avoid disabling cache
   //SCB_InvalidateDCache_by_Addr((uint32_t*)(((uint32_t)input_buffer) & ~(uint32_t)0x1F), sizeof(input_buffer)+32);
 
-  WM8994_Init_t codec_init;
+  BSP_AUDIO_Init_t BSP_OutputConfig = {0};
+  BSP_OutputConfig.BitsPerSample = 16;
+  BSP_OutputConfig.ChannelsNbr = 2;
+  BSP_OutputConfig.Device = WM8994_OUT_HEADPHONE;
+  BSP_OutputConfig.SampleRate = 16000;
+  BSP_OutputConfig.Volume = 60;
 
-  codec_init.Resolution   = 0;
-
-  /* Fill codec_init structure */
-  codec_init.Frequency    = WM8994_FREQUENCY_16K;
-  codec_init.InputDevice  = WM8994_IN_NONE;
-  codec_init.OutputDevice = WM8994_OUT_HEADPHONE;
-
-  /* Convert volume before sending to the codec */
-  codec_init.Volume       = VOLUME_OUT_CONVERT(60);
-
-  /* Start the playback */
-  if(Audio_Drv->Init(Audio_CompObj, &codec_init) != 0)
-  {
-	  Error_Handler();
-  }
-
-  /* Start the playback */
-  if(Audio_Drv->Play(Audio_CompObj) < 0)
-  {
-	  Error_Handler();
-  }
+  BSP_AUDIO_IN_Init(1, &BSP_OutputConfig); //for PDM2PCM
+  BSP_AUDIO_OUT_Init(1, &BSP_OutputConfig);
 
   printf("Starting Input SAI4/BDMA...\r\n");
   if (HAL_SAI_Receive_DMA(&hsai_BlockA4, (uint8_t *)input_buffer, sizeof(input_buffer)) != HAL_OK) {
@@ -206,8 +192,8 @@ int main(void)
   }
 
   printf("Starting Output SAI1/DMA...\r\n");
-  if (HAL_SAI_Transmit_DMA(&hsai_BlockA1, (uint8_t *)output_buffer, sizeof(output_buffer)) != HAL_OK) {
-	  printf("SAI1/DMA initialization failed! Error: %ld\r\n", hsai_BlockA1.ErrorCode);
+  if (BSP_AUDIO_OUT_Play(1, (uint8_t *)output_buffer, sizeof(output_buffer)) != BSP_ERROR_NONE) {
+	  printf("SAI1/DMA initialization failed!\r\n");
   } else {
 	  printf("SAI1/DMA started successfully.\r\n");
   }
@@ -244,8 +230,6 @@ int main(void)
 //		  printf("GPIO INPUT WORKING\n");
 //	  }
     /* USER CODE END WHILE */
-
-  //MX_X_CUBE_AI_Process();
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -347,7 +331,7 @@ static void MX_SAI1_Init(void)
 {
 
   /* USER CODE BEGIN SAI1_Init 0 */
-  __HAL_SAI_RESET_HANDLE_STATE(&hsai_BlockA1);
+	__HAL_RCC_SAI1_CLK_ENABLE();
   /* USER CODE END SAI1_Init 0 */
 
   /* USER CODE BEGIN SAI1_Init 1 */
@@ -361,9 +345,9 @@ static void MX_SAI1_Init(void)
   hsai_BlockA1.Init.ClockStrobing = SAI_CLOCKSTROBING_FALLINGEDGE;
   hsai_BlockA1.Init.Synchro = SAI_ASYNCHRONOUS;
   hsai_BlockA1.Init.OutputDrive = SAI_OUTPUTDRIVE_DISABLE;
-  hsai_BlockA1.Init.NoDivider = SAI_MASTERDIVIDER_DISABLE;
-  hsai_BlockA1.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_ENABLE;
-  hsai_BlockA1.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_EMPTY;
+  hsai_BlockA1.Init.NoDivider = SAI_MCK_OVERSAMPLING_DISABLE;
+  hsai_BlockA1.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_DISABLE;
+  hsai_BlockA1.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_1QF;
   hsai_BlockA1.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_MCKDIV;
   hsai_BlockA1.Init.Mckdiv = 6;
   hsai_BlockA1.Init.SynchroExt = SAI_SYNCEXT_DISABLE;
@@ -373,24 +357,24 @@ static void MX_SAI1_Init(void)
   hsai_BlockA1.Init.PdmInit.Activation = DISABLE;
   hsai_BlockA1.Init.PdmInit.MicPairsNbr = 1;
   hsai_BlockA1.Init.PdmInit.ClockEnable = SAI_PDM_CLOCK1_ENABLE;
-  hsai_BlockA1.FrameInit.FrameLength = 64;
-  hsai_BlockA1.FrameInit.ActiveFrameLength = 32;
+  hsai_BlockA1.FrameInit.FrameLength = 128;
+  hsai_BlockA1.FrameInit.ActiveFrameLength = 1;
   hsai_BlockA1.FrameInit.FSDefinition = SAI_FS_STARTFRAME;
   hsai_BlockA1.FrameInit.FSPolarity = SAI_FS_ACTIVE_LOW;
   hsai_BlockA1.FrameInit.FSOffset = SAI_FS_FIRSTBIT;
   hsai_BlockA1.SlotInit.FirstBitOffset = 0;
   hsai_BlockA1.SlotInit.SlotSize = SAI_SLOTSIZE_DATASIZE;
   hsai_BlockA1.SlotInit.SlotNumber = 4;
-  hsai_BlockA1.SlotInit.SlotActive = SAI_SLOTACTIVE_0 | SAI_SLOTACTIVE_2;
+  hsai_BlockA1.SlotInit.SlotActive = 0x00000005;
   if (HAL_SAI_Init(&hsai_BlockA1) != HAL_OK)
   {
     Error_Handler();
   }
   /* USER CODE BEGIN SAI1_Init 2 */
   /* Init PDM Filters */
-  __HAL_SAI_ENABLE(&hsai_BlockA1);
-  WM8994_Probe();
-  AUDIO_IN_PDMToPCM_Init(AUDIO_FREQUENCY, AUDIO_CHANNEL_NUMBER);
+//  __HAL_SAI_ENABLE(&hsai_BlockA1);
+  //WM8994_Probe();
+  BSP_AUDIO_IN_PDMToPCM_Init(1, 16000, 2, 2);
   /* USER CODE END SAI1_Init 2 */
 
 }
@@ -547,12 +531,12 @@ static void MX_DMA_Init(void)
 {
 
   /* DMA controller clock enable */
-  __HAL_RCC_DMA1_CLK_ENABLE();
+  __HAL_RCC_DMA2_CLK_ENABLE();
 
   /* DMA interrupt init */
-  /* DMA1_Stream0_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
+  /* DMA2_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
 
 }
 
@@ -615,8 +599,8 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOE_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOG_CLK_ENABLE();
 
@@ -648,10 +632,10 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai)
 //	for (int i = 0; i < 10; i++) {
 //		printf("[%d]: %d\r\n", i, input_buffer[i]);
 //	}
-	AUDIO_IN_PDMToPCM((uint16_t*)&input_buffer[0], (uint16_t*)&output_buffer[0], AUDIO_CHANNEL_NUMBER);
+	BSP_AUDIO_IN_PDMToPCM(1, (uint16_t*)input_buffer, (uint16_t*)output_buffer);
 
 	float decibel_level = calculate_decibel(input_buffer, AUDIO_BUFFER_SIZE);
-	printf("SPL: %.2f dB\r\n", decibel_level);
+	//printf("SPL: %.2f dB\r\n", decibel_level);
 }
 
 /**
