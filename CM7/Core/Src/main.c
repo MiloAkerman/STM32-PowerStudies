@@ -21,6 +21,7 @@
 #include "fatfs.h"
 #include "app_x-cube-ai.h"
 
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "string.h"
@@ -79,7 +80,7 @@ static void MX_USART1_UART_Init(void);
 static void MX_SAI4_Init(void);
 static void MX_SDMMC1_SD_Init(void);
 /* USER CODE BEGIN PFP */
-
+static void SD_Card_Power_Test(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -128,7 +129,7 @@ int main(void)
   SCB_EnableICache();
 
   /* Enable D-Cache---------------------------------------------------------*/
-  //SCB_EnableDCache();
+  SCB_EnableDCache();
 
 /* USER CODE BEGIN Boot_Mode_Sequence_1 */
 #if defined(DUAL_CORE_BOOT_SYNC_SEQUENCE)
@@ -185,12 +186,12 @@ Error_Handler();
   MX_MDMA_Init();
   MX_USART1_UART_Init();
   MX_SAI4_Init();
-  //MX_SDMMC1_SD_Init();
+  MX_SDMMC1_SD_Init();
   MX_FATFS_Init();
   MX_X_CUBE_AI_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
+  //HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
 
   // TODO: Cache invalidation to avoid disabling cache
   //SCB_InvalidateDCache_by_Addr((uint32_t*)(((uint32_t)audio_buffer) & ~(uint32_t)0x1F), sizeof(audio_buffer)+32);
@@ -202,6 +203,7 @@ Error_Handler();
 	  printf("SAI DMA started successfully.\r\n");
   }
 
+  SD_Card_Power_Test();
   // TODO: Remove power testing code when done
   //  Testing the power consumption in sleep mode
 //  HAL_Delay(2000);
@@ -210,22 +212,15 @@ Error_Handler();
 //  HAL_ResumeTick();
 
   //  Test the power consumption in standby mode
-//  HAL_Delay(2000);
-//  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
-//  HAL_PWR_EnterSTANDBYMode();
-
-  // Test the power consumption in standby mode
-//  HAL_Delay(2000);
-//  HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);
-//  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
-//  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
-//  HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1);
-//	HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
-//  HAL_PWREx_EnterSTANDBYMode(PWR_D2_DOMAIN);
-//  HAL_PWREx_EnterSTANDBYMode(PWR_D1_DOMAIN);
+   //HAL_Delay(1000);
+//   HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN4);
+//   HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN4);
+//   __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
+//   HAL_PWR_EnterSTANDBYMode();
 
   /* USER CODE END 2 */
 
+  /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
@@ -233,11 +228,71 @@ Error_Handler();
 //		  printf("GPIO INPUT WORKING\n");
 //	  }
     /* USER CODE END WHILE */
-
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
+
+/* USER CODE BEGIN Init */
+/**
+  * @brief SD Card Power Test
+  * @retval None
+  */
+static void SD_Card_Power_Test(void){
+	FATFS FatFs;
+	FIL Fil;
+	FRESULT FR_Status;
+	FATFS *FS_Ptr;
+	DWORD FreeClusters;
+	uint32_t TotalSize, FreeSpace;
+	char RW_Buffer[200];
+
+	// Mount the SD card
+	FR_Status = f_mount(&FatFs, SDPath, 1);
+	if (FR_Status != FR_OK){
+		printf("Error! While Mounting SD Card, Error Code: (%i)\r\n", FR_Status);
+	}
+	printf("SD Card Mounted Successfully! \r\n\n");
+
+	//Get and print the SD card size and free space
+	f_getfree("", &FreeClusters, &FS_Ptr);
+	TotalSize = (uint32_t)((FS_Ptr->n_fatent - 2) * FS_Ptr->csize * 0.5);
+	FreeSpace = (uint32_t)(FreeClusters * FS_Ptr->csize * 0.5);
+	printf("Total SD Card Size: %lu Bytes\r\n", TotalSize);
+	printf("Free SD Card Space: %lu Bytes\r\n\n", FreeSpace);
+
+	// Open a file for writing and write to it
+	FR_Status = f_open(&Fil, "MyTextFile.txt", FA_WRITE | FA_READ | FA_CREATE_ALWAYS);
+	if(FR_Status != FR_OK)
+	{
+	  printf("Error! While Creating/Opening A New Text File, Error Code: (%i)\r\n", FR_Status);
+	  return;
+	}
+
+	// Write Data To The Text File
+	f_puts("Writing to SD Card Over SDMMC\n", &Fil);
+
+	// Close The File
+	f_close(&Fil);
+	printf("File Closed! \r\n\n");
+
+	// Open The File for reading and read it (Take out after ensuring data is being written)
+	FR_Status = f_open(&Fil, "MyTextFile.txt", FA_READ);
+	if(FR_Status != FR_OK)
+	{
+	  printf("Error! While Opening (MyTextFile.txt) File For Read.. \r\n");
+	  return;
+	}
+
+	//Read The Text File's Data
+	f_gets(RW_Buffer, sizeof(RW_Buffer), &Fil);
+	printf("Data Read From (MyTextFile.txt) Using f_gets():%s", RW_Buffer);
+
+	// Close The File
+	f_close(&Fil);
+	printf("File Closed! \r\n\n");
+}
+/* USER CODE END Init */
 
 /**
   * @brief System Clock Configuration
@@ -305,9 +360,9 @@ void PeriphCommonClock_Config(void)
   /** Initializes the peripherals clock
   */
   PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_SAI4A|RCC_PERIPHCLK_SDMMC;
-  PeriphClkInitStruct.PLL2.PLL2M = 21;
-  PeriphClkInitStruct.PLL2.PLL2N = 289;
-  PeriphClkInitStruct.PLL2.PLL2P = 7;
+  PeriphClkInitStruct.PLL2.PLL2M = 2;
+  PeriphClkInitStruct.PLL2.PLL2N = 32;
+  PeriphClkInitStruct.PLL2.PLL2P = 8;
   PeriphClkInitStruct.PLL2.PLL2Q = 2;
   PeriphClkInitStruct.PLL2.PLL2R = 4;
   PeriphClkInitStruct.PLL2.PLL2RGE = RCC_PLL2VCIRANGE_3;
@@ -343,11 +398,10 @@ static void MX_SAI4_Init(void)
   hsai_BlockA4.Init.ClockStrobing = SAI_CLOCKSTROBING_FALLINGEDGE;
   hsai_BlockA4.Init.Synchro = SAI_ASYNCHRONOUS;
   hsai_BlockA4.Init.OutputDrive = SAI_OUTPUTDRIVE_DISABLE;
-  hsai_BlockA4.Init.NoDivider = SAI_MASTERDIVIDER_DISABLE;
-  hsai_BlockA4.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_DISABLE;
+  hsai_BlockA4.Init.NoDivider = SAI_MCK_OVERSAMPLING_ENABLE;
+  hsai_BlockA4.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_ENABLE;
   hsai_BlockA4.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_EMPTY;
-  hsai_BlockA4.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_MCKDIV;
-  hsai_BlockA4.Init.Mckdiv = 2; // 48kHz
+  hsai_BlockA4.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_16K;
   hsai_BlockA4.Init.MonoStereoMode = SAI_STEREOMODE;
   hsai_BlockA4.Init.CompandingMode = SAI_NOCOMPANDING;
   hsai_BlockA4.Init.PdmInit.Activation = ENABLE;
@@ -378,7 +432,7 @@ static void MX_SAI4_Init(void)
   */
 static void MX_SDMMC1_SD_Init(void)
 {
-	(void)UNUSED;
+
   /* USER CODE BEGIN SDMMC1_Init 0 */
 
   /* USER CODE END SDMMC1_Init 0 */
@@ -391,7 +445,7 @@ static void MX_SDMMC1_SD_Init(void)
   hsd1.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_DISABLE;
   hsd1.Init.BusWide = SDMMC_BUS_WIDE_4B;
   hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_ENABLE;
-  hsd1.Init.ClockDiv = 0;
+  hsd1.Init.ClockDiv = 8;
   if (HAL_SD_Init(&hsd1) != HAL_OK)
   {
     Error_Handler();
@@ -529,7 +583,6 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOJ_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
@@ -580,8 +633,8 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai)
 //	for (int i = 0; i < 10; i++) {
 //		printf("[%d]: %d\r\n", i, audio_buffer[i]);
 //	}
-	float decibel_level = calculate_decibel(audio_buffer, BUFFER_SIZE);
-	printf("SPL: %.2f dB\r\n", decibel_level);
+//	float decibel_level = calculate_decibel(audio_buffer, BUFFER_SIZE);
+//	printf("SPL: %.2f dB\r\n", decibel_level);
 }
 
 /**
