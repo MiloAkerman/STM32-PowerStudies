@@ -1879,7 +1879,7 @@ int32_t BSP_AUDIO_IN_PDMToPCM_Init(uint32_t Instance, uint32_t AudioFreq, uint32
       /* Init PDM filters */
       PDM_FilterHandler[index].bit_order  = PDM_FILTER_BIT_ORDER_MSB;
       PDM_FilterHandler[index].endianness = PDM_FILTER_ENDIANNESS_LE;
-      PDM_FilterHandler[index].high_pass_tap = 2122358088;
+      PDM_FilterHandler[index].high_pass_tap = 0x7E000000;
       PDM_FilterHandler[index].out_ptr_channels = ChnlNbrOut;
       PDM_FilterHandler[index].in_ptr_channels  = ChnlNbrIn;
       PDM_Filter_Init((PDM_Filter_Handler_t *)(&PDM_FilterHandler[index]));
@@ -2072,7 +2072,7 @@ int32_t BSP_AUDIO_IN_Resume(uint32_t Instance)
 
 /**
   * @brief  Start audio recording.
-  * @param  Instance  AUDIO IN SAI PDM Instance. It can be only 2
+  * @param  Instance  AUDIO IN SAI PDM Instance. It can be only 1
   * @param  pBuf     Main buffer pointer for the recorded data storing
   * @param  NbrOfBytes  Size of the record buffer
   * @retval BSP status

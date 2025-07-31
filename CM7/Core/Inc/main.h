@@ -37,6 +37,7 @@ extern "C" {
 #include "audio.h"
 #include "wm8994.h"
 #include "pdm2pcm_glo.h"
+#include "arm_math.h"
 
 #include "math.h"
 #include <stdio.h>

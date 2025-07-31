@@ -36,11 +36,23 @@ typedef enum {
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define AUDIO_FREQUENCY       48000U
-#define AUDIO_CHANNEL_NUMBER  2U
-#define AUDIO_BUFFER_SIZE     4096U
-#define AUDIO_PCM_CHUNK_SIZE  32U
-#define REFERENCE_VOLTAGE 0.00002f
+#define AUDIO_FREQUENCY       16000U
+#define AUDIO_CHANNEL_NUMBER  1U
+#define AUDIO_BUFFER_SIZE     1024U
+#define AUDIO_PCM_CHUNK_SIZE  16U
+#define BITS_PER_SAMPLE		  16U
+
+#define DECIMATION_FACTOR     64U
+#define PDM_WORDS_PER_CHUNK   (AUDIO_PCM_CHUNK_SIZE * DECIMATION_FACTOR / BITS_PER_SAMPLE)
+
+#define FIR_TAPS        8
+
+// coefficients for a 60 Hz notch @16 kHz, Q = 30
+#define B0  1623   //  0.05 in Q15
+#define B1 -3230   // -0.10
+#define B2  1623
+#define A1 -3230   // -0.10
+#define A2  1596   //  0.049
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -59,12 +71,26 @@ SD_HandleTypeDef hsd1;
 UART_HandleTypeDef huart1;
 
 MDMA_HandleTypeDef hmdma_mdma_channel0_sdmmc1_end_data_0;
-/* USER CODE BEGIN PV */
-static AUDIO_Drv_t  *Audio_Drv = NULL;
-WM8994_Init_t codec_init;
 
-/* Buffer status variable */
+// Example low-pass coefficients in Q15 (you’ll want to design these for ~7 kHz cutoff)
+const q15_t firCoeffs[FIR_TAPS] = {
+    1638,  3277,  4915,  6553,  4915,  3277,  1638,     0
+};
+
+// State buffer must be length = blockSize + numTaps – 1
+static q15_t firState[FIR_TAPS + AUDIO_PCM_CHUNK_SIZE - 1];
+
+// FIR instance
+static arm_fir_instance_q15 S;
+
+uint16_t input_buffer[AUDIO_BUFFER_SIZE] __attribute__((section(".DATA_RAM_D3")));
+uint16_t output_buffer[AUDIO_BUFFER_SIZE];
+
+__IO uint32_t pcmPtr;
 __IO BUFFER_StateTypeDef bufferStatus = BUFFER_OFFSET_NONE;
+/* USER CODE END 0 */
+/* USER CODE BEGIN PV */
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -78,10 +104,12 @@ static void MX_USART1_UART_Init(void);
 static void MX_SAI4_Init(void);
 static void MX_SDMMC1_SD_Init(void);
 static void MX_SAI1_Init(void);
+void fir_init(void);
+void process_pcm_block(uint16_t *pcm_chunk);
+int16_t notch(int16_t x0);
+static void dcache_invalidate(void *addr, uint32_t size);
+static void dcache_clean(void *addr, uint32_t size);
 /* USER CODE BEGIN PFP */
-static void AUDIO_IN_PDMToPCM_Init(uint32_t AudioFreq, uint32_t ChannelNumber);
-static void AUDIO_IN_PDMToPCM(uint16_t *PDMBuf, uint16_t *PCMBuf, uint32_t ChannelNumber);
-static int32_t WM8994_Probe(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -91,27 +119,56 @@ int _write(int file, char *ptr, int len) {
     return len;
 }
 
-float calculate_decibel(int16_t *buffer, size_t size) {
-    float sum = 0.0f;
-
-    for (size_t i = 0; i < size; i++) {
-        float voltage = (float)buffer[i] / 32768.0f; // Normalize 16-bit value
-        sum += voltage * voltage;
-    }
-
-    float rms = sqrtf(sum / size);
-    float spl = 20.0f * log10f(rms / REFERENCE_VOLTAGE);
-
-    return spl;
+void fir_init(void) {
+    // &S      → instance pointer
+    // FIR_TAPS → number of taps
+    // firCoeffs → pointer to coeff array
+    // firState  → state buffer
+    // PCM_CHUNK_SIZE → block size
+    arm_fir_init_q15(&S,
+                     FIR_TAPS,
+                     (q15_t *)firCoeffs,
+                     firState,
+					 AUDIO_PCM_CHUNK_SIZE);
 }
 
-int16_t input_buffer[AUDIO_BUFFER_SIZE] __attribute__((section(".DATA_RAM_D3")));
-int16_t output_buffer[AUDIO_BUFFER_SIZE];
+void process_pcm_block(uint16_t *pcm_chunk) {
+    // Allocate a temporary buffer if you want to keep original unfiltered PCM.
+    // If in-place is OK, you can pass pcm_chunk for both src and dst.
+    q15_t filtered[AUDIO_PCM_CHUNK_SIZE];
 
-/* PDM Filters params */
-PDM_Filter_Handler_t  PDM_FilterHandler[2];
-PDM_Filter_Config_t   PDM_FilterConfig[2];
-/* USER CODE END 0 */
+    // Run the FIR: input is q15_t, but your int16_t map directly to q15_t
+    arm_fir_q15(&S,
+                (q15_t *)pcm_chunk,  // source buffer
+                filtered,            // destination buffer
+				AUDIO_PCM_CHUNK_SIZE);     // number of samples
+
+    // Copy back (in-place) or use filtered[] directly
+    for (int i = 0; i < AUDIO_PCM_CHUNK_SIZE; i++) {
+        pcm_chunk[i] = filtered[i];
+    }
+}
+
+static int16_t n_x1,n_x2,n_y1,n_y2;
+int16_t notch(int16_t x0) {
+    int32_t n_y0 = B0*x0 + B1*n_x1 + B2*n_x2 - A1*n_y1 - A2*n_y2;
+    n_y0 >>= 15;
+    n_x2 = n_x1; n_x1 = x0;
+    n_y2 = n_y1; n_y1 = (int16_t)n_y0;
+    return (int16_t)n_y0;
+}
+
+// helper to align address/size to 32-byte D-cache line size
+static void dcache_invalidate(void *addr, uint32_t size) {
+    uint32_t a = (uint32_t)addr & ~31U;
+    uint32_t s = ((size + 31U) & ~31U);
+    SCB_InvalidateDCache_by_Addr((uint32_t*)a, s);
+}
+static void dcache_clean(void *addr, uint32_t size) {
+    uint32_t a = (uint32_t)addr & ~31U;
+    uint32_t s = ((size + 31U) & ~31U);
+    SCB_CleanDCache_by_Addr((uint32_t*)a, s);
+}
 
 /**
   * @brief  The application entry point.
@@ -131,7 +188,7 @@ int main(void)
   SCB_EnableICache();
 
   /* Enable D-Cache---------------------------------------------------------*/
-  //SCB_EnableDCache();
+  SCB_EnableDCache();
 
 /* USER CODE BEGIN Boot_Mode_Sequence_1 */
 /* USER CODE END Boot_Mode_Sequence_1 */
@@ -175,10 +232,10 @@ int main(void)
   //SCB_InvalidateDCache_by_Addr((uint32_t*)(((uint32_t)input_buffer) & ~(uint32_t)0x1F), sizeof(input_buffer)+32);
 
   BSP_AUDIO_Init_t BSP_OutputConfig = {0};
-  BSP_OutputConfig.BitsPerSample = 16;
-  BSP_OutputConfig.ChannelsNbr = 2;
+  BSP_OutputConfig.BitsPerSample = BITS_PER_SAMPLE;
+  BSP_OutputConfig.ChannelsNbr = AUDIO_CHANNEL_NUMBER;
   BSP_OutputConfig.Device = WM8994_OUT_HEADPHONE;
-  BSP_OutputConfig.SampleRate = 16000;
+  BSP_OutputConfig.SampleRate = AUDIO_FREQUENCY;
   BSP_OutputConfig.Volume = 60;
 
   BSP_AUDIO_IN_Init(1, &BSP_OutputConfig); //for PDM2PCM
@@ -197,6 +254,8 @@ int main(void)
   } else {
 	  printf("SAI1/DMA started successfully.\r\n");
   }
+
+  fir_init();
 
   // TODO: Remove power testing code when done
   //  Testing the power consumption in sleep mode
@@ -220,6 +279,8 @@ int main(void)
 //  HAL_PWREx_EnterSTANDBYMode(PWR_D2_DOMAIN);
 //  HAL_PWREx_EnterSTANDBYMode(PWR_D1_DOMAIN);
 
+  /* Initialize Rx buffer status */
+  bufferStatus &= BUFFER_OFFSET_NONE;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -229,6 +290,46 @@ int main(void)
 //	  if(HAL_GPIO_ReadPin(GPIOJ, GPIO_PIN_0)){
 //		  printf("GPIO INPUT WORKING\n");
 //	  }
+
+	  // Wait for half-buffer
+	  if ((bufferStatus & BUFFER_OFFSET_HALF) == BUFFER_OFFSET_HALF)
+	  {
+		  dcache_invalidate(&input_buffer[0], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
+		  printf("Buffer half full! \r\n");
+		  // Process the first half in PDM_WORDS_PER_CHUNK-sized chunks
+		  for (int i = 0; i < (AUDIO_BUFFER_SIZE/2) / PDM_WORDS_PER_CHUNK; i++)
+		  {
+			  uint16_t *pdm_chunk = &input_buffer[i * PDM_WORDS_PER_CHUNK];
+			  uint16_t  *pcm_out    = &output_buffer[pcmPtr];
+			  BSP_AUDIO_IN_PDMToPCM(1, pdm_chunk, pcm_out);
+			  process_pcm_block(pcm_out);
+			  dcache_clean(pcm_out, AUDIO_PCM_CHUNK_SIZE * sizeof(int16_t));
+			  pcmPtr += AUDIO_PCM_CHUNK_SIZE;
+		  }
+		  bufferStatus &= ~BUFFER_OFFSET_HALF;
+	  }
+
+	  // Wait for full-buffer
+	  if ((bufferStatus & BUFFER_OFFSET_FULL) == BUFFER_OFFSET_FULL)
+	  {
+		  dcache_invalidate(&input_buffer[AUDIO_BUFFER_SIZE/2], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
+		  printf("Buffer full! \r\n");
+		  // Process the second half the same way
+		  for (int i = 0; i < (AUDIO_BUFFER_SIZE/2) / PDM_WORDS_PER_CHUNK; i++)
+		  {
+			  uint16_t *pdm_chunk = &input_buffer[AUDIO_BUFFER_SIZE/2 + i * PDM_WORDS_PER_CHUNK];
+			  uint16_t  *pcm_out    = &output_buffer[pcmPtr];
+			  BSP_AUDIO_IN_PDMToPCM(1, pdm_chunk, pcm_out);
+			  process_pcm_block(pcm_out);
+			  dcache_clean(pcm_out, AUDIO_PCM_CHUNK_SIZE * sizeof(int16_t));
+			  pcmPtr += AUDIO_PCM_CHUNK_SIZE;
+		  }
+		  bufferStatus &= ~BUFFER_OFFSET_FULL;
+	  }
+
+	  // wrap the pcm pointer if needed
+	  if (pcmPtr >= AUDIO_BUFFER_SIZE)
+		  pcmPtr = 0;
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
   }
@@ -345,13 +446,13 @@ static void MX_SAI1_Init(void)
   hsai_BlockA1.Init.ClockStrobing = SAI_CLOCKSTROBING_FALLINGEDGE;
   hsai_BlockA1.Init.Synchro = SAI_ASYNCHRONOUS;
   hsai_BlockA1.Init.OutputDrive = SAI_OUTPUTDRIVE_DISABLE;
-  hsai_BlockA1.Init.NoDivider = SAI_MCK_OVERSAMPLING_DISABLE;
-  hsai_BlockA1.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_DISABLE;
-  hsai_BlockA1.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_1QF;
-  hsai_BlockA1.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_MCKDIV;
-  hsai_BlockA1.Init.Mckdiv = 6;
+  hsai_BlockA1.Init.NoDivider = SAI_MASTERDIVIDER_DISABLE;
+  hsai_BlockA1.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_ENABLE;
+  hsai_BlockA1.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_EMPTY;
+  hsai_BlockA1.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_16K;
+  //hsai_BlockA1.Init.Mckdiv = 6;
   hsai_BlockA1.Init.SynchroExt = SAI_SYNCEXT_DISABLE;
-  hsai_BlockA1.Init.MonoStereoMode = SAI_STEREOMODE;
+  hsai_BlockA1.Init.MonoStereoMode = SAI_MONOMODE;
   hsai_BlockA1.Init.CompandingMode = SAI_NOCOMPANDING;
   hsai_BlockA1.Init.TriState = SAI_OUTPUT_NOTRELEASED;
   hsai_BlockA1.Init.PdmInit.Activation = DISABLE;
@@ -374,7 +475,7 @@ static void MX_SAI1_Init(void)
   /* Init PDM Filters */
 //  __HAL_SAI_ENABLE(&hsai_BlockA1);
   //WM8994_Probe();
-  BSP_AUDIO_IN_PDMToPCM_Init(1, 16000, 2, 2);
+  BSP_AUDIO_IN_PDMToPCM_Init(1, AUDIO_FREQUENCY, AUDIO_CHANNEL_NUMBER, AUDIO_CHANNEL_NUMBER);
   /* USER CODE END SAI1_Init 2 */
 
 }
@@ -621,21 +722,7 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai)
   /* NOTE : This function Should not be modified, when the callback is needed,
             the HAL_SAI_RxCpltCallback could be implemented in the user file
    */
-//	printf("Buffer Full!! =======================================\r\n");
-//	printf("SAI State: %d \r\n", HAL_SAI_GetState(&hsai_BlockA4));
-//	printf("SAI Error: %lu \r\n", HAL_SAI_GetError(&hsai_BlockA4));
-//	printf("SAI Buffer Address: 0x%08lx\r\n", SAI4_Block_A->DR);  // this should change over time if data is coming in
-//	printf("DMA State: %d \r\n", HAL_DMA_GetState(&hdma_sai4_a));
-//	printf("DMA Error: %lu \r\n", HAL_DMA_GetError(&hdma_sai4_a));
-//	printf("Pointer location: %p \r\n", input_buffer);
-//	printf("Audio Buffer Data:\r\n");
-//	for (int i = 0; i < 10; i++) {
-//		printf("[%d]: %d\r\n", i, input_buffer[i]);
-//	}
-	BSP_AUDIO_IN_PDMToPCM(1, (uint16_t*)input_buffer, (uint16_t*)output_buffer);
-
-	float decibel_level = calculate_decibel(input_buffer, AUDIO_BUFFER_SIZE);
-	//printf("SPL: %.2f dB\r\n", decibel_level);
+	bufferStatus |= BUFFER_OFFSET_FULL;
 }
 
 /**
@@ -649,108 +736,7 @@ void HAL_SAI_RxHalfCpltCallback(SAI_HandleTypeDef *hsai)
   /* NOTE : This function Should not be modified, when the callback is needed,
             the HAL_SAI_RxHalfCpltCallback could be implenetd in the user file
    */
-	//printf("Buffer Half Full!! ==================================\r\n");
-}
-
-/**
-  * @brief  Register Bus IOs if component ID is OK
-  * @retval error status
-  */
-static int32_t WM8994_Probe(void)
-{
-  int32_t ret = BSP_ERROR_NONE;
-  WM8994_IO_t              IOCtx;
-  static WM8994_Object_t   WM8994Obj;
-  uint32_t id;
-
-  /* Configure the audio driver */
-  IOCtx.Address     = AUDIO_I2C_ADDRESS;
-  IOCtx.Init        = BSP_I2C4_Init;
-  IOCtx.DeInit      = BSP_I2C4_DeInit;
-  IOCtx.ReadReg     = BSP_I2C4_ReadReg16;
-  IOCtx.WriteReg    = BSP_I2C4_WriteReg16;
-  IOCtx.GetTick     = BSP_GetTick;
-
-  if(WM8994_RegisterBusIO (&WM8994Obj, &IOCtx) != WM8994_OK)
-  {
-    ret = BSP_ERROR_BUS_FAILURE;
-  }
-  else
-  {
-    /* Reset the codec */
-    if(WM8994_Reset(&WM8994Obj) != WM8994_OK)
-    {
-      ret = BSP_ERROR_COMPONENT_FAILURE;
-    }
-    else if(WM8994_ReadID(&WM8994Obj, &id) != WM8994_OK)
-    {
-      ret = BSP_ERROR_COMPONENT_FAILURE;
-    }
-    else if(id != WM8994_ID)
-    {
-      ret = BSP_ERROR_UNKNOWN_COMPONENT;
-    }
-    else
-    {
-      Audio_Drv = (AUDIO_Drv_t *) &WM8994_Driver;
-      Audio_CompObj = &WM8994Obj;
-    }
-  }
-  return ret;
-}
-
-/**
-* @brief  Init PDM Filters.
-* @param  AudioFreq: Audio sampling frequency
-* @param  ChannelNumber: Number of audio channels in the PDM buffer.
-* @retval None
-*/
-static void AUDIO_IN_PDMToPCM_Init(uint32_t AudioFreq, uint32_t ChannelNumber)
-{
-  uint32_t index = 0;
-
-  /* Enable CRC peripheral to unlock the PDM library */
-  __HAL_RCC_CRC_CLK_ENABLE();
-
-  for(index = 0; index < ChannelNumber; index++)
-  {
-    /* Init PDM filters */
-    PDM_FilterHandler[index].bit_order  = PDM_FILTER_BIT_ORDER_MSB;
-    PDM_FilterHandler[index].endianness = PDM_FILTER_ENDIANNESS_LE;
-    PDM_FilterHandler[index].high_pass_tap = 2122358088;
-    PDM_FilterHandler[index].out_ptr_channels = ChannelNumber;
-    PDM_FilterHandler[index].in_ptr_channels  = ChannelNumber;
-    PDM_Filter_Init((PDM_Filter_Handler_t *)(&PDM_FilterHandler[index]));
-
-    /* Configure PDM filters */
-    PDM_FilterConfig[index].output_samples_number = AudioFreq/1000;
-    PDM_FilterConfig[index].mic_gain = 24;
-    PDM_FilterConfig[index].decimation_factor = PDM_FILTER_DEC_FACTOR_64;
-    PDM_Filter_setConfig((PDM_Filter_Handler_t *)&PDM_FilterHandler[index], &PDM_FilterConfig[index]);
-  }
-}
-
-/**
-  * @brief  Convert audio format from PDM to PCM.
-  * @param  PDMBuf: Pointer to PDM buffer data
-  * @param  PCMBuf: Pointer to PCM buffer data
-  * @param  ChannelNumber: PDM Channels number.
-  * @retval None
-*/
-static void AUDIO_IN_PDMToPCM(uint16_t *PDMBuf, uint16_t *PCMBuf, uint32_t ChannelNumber)
-{
-  uint32_t index = 0;
-
-  /* Invalidate Data Cache to get the updated content of the SRAM*/
-  //SCB_InvalidateDCache_by_Addr((uint32_t *)PDMBuf, AUDIO_BUFFER_SIZE);
-
-  for(index = 0; index < ChannelNumber; index++)
-  {
-    PDM_Filter(&((uint8_t*)(PDMBuf))[index], (uint16_t*)&(PCMBuf[index]), &PDM_FilterHandler[index]);
-  }
-
-  /* Clean Data Cache to update the content of the SRAM */
-  //SCB_CleanDCache_by_Addr((uint32_t*)PCMBuf, AUDIO_PCM_CHUNK_SIZE*2);
+	bufferStatus |= BUFFER_OFFSET_HALF;
 }
 /* USER CODE END 4 */
 
