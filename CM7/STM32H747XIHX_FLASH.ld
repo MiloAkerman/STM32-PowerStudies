@@ -177,10 +177,17 @@ SECTIONS
     . = ALIGN(8);
   } >DTCMRAM
   
+  .DATA_RAM_D2 :
+  {
+  	. = ALIGN(4);
+    *(.DATA_RAM_D2)
+    *(.DATA_RAM_D2*)
+  } >RAM_D2
+
   .DATA_RAM_D3 :
   {
   } >RAM_D3
-
+   
   /* Remove information from the compiler libraries */
   /DISCARD/ :
   {
