@@ -81,6 +81,8 @@ static void MX_SAI4_Init(void);
 static void MX_SDMMC1_SD_Init(void);
 /* USER CODE BEGIN PFP */
 static void SD_Card_Power_Test(void);
+void create_wav_header(wav_header *header,
+		int sample_rate, int num_channels, int bit_depth, int data_size);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -233,7 +235,38 @@ Error_Handler();
   }
   /* USER CODE END 3 */
 }
+
 /* USER CODE BEGIN 4 */
+
+/**
+  * @brief Create a WAV header
+  * @param header Pointer to the wav_header structure
+  * @param sample_rate Sample rate in Hz
+  * @param num_channels Number of audio channels (1 for mono, 2 for stereo)
+  * @param bit_depth Bit depth (e.g., 16 for PCM)
+  * @param data_size Size of the audio data in bytes
+  */
+void create_wav_header(wav_header *header, int sample_rate, int num_channels, int bit_depth, int data_size) {
+	// RIFF Header
+	memcpy(header->riff_header, "RIFF", 4);
+	header->wav_size = data_size + 36; // Total file size - 8 bytes for RIFF header
+	memcpy(header->wave_header, "WAVE", 4);
+
+	// Format Header
+	memcpy(header->fmt_header, "fmt ", 4); // Note the trailing space
+	header->fmt_chunk_size = 16; // For PCM
+	header->audio_format = 1; // PCM
+	header->num_channels = num_channels;
+	header->sample_rate = sample_rate;
+	header->byte_rate = sample_rate * num_channels * (bit_depth / 8);
+	header->sample_alignment = num_channels * (bit_depth / 8);
+	header->bit_depth = bit_depth;
+
+	// Data Header
+	memcpy(header->data_header, "data", 4);
+	header->data_bytes = data_size; // Number of bytes in data
+}
+
 /**
   * @brief SD Card Power Test
   * @retval None
@@ -262,10 +295,18 @@ static void SD_Card_Power_Test(void){
 	  return;
 	}
 
+	//create wav header for audio data
+	printf("buow_pcm_size: %d\r\n", buow_pcm_size);
+	//wav_header header;
+	//create_wav_header(&header, 16000, 1, 16, buow_pcm_size);
+
 	// Write Data To The Text File
 	//f_puts("Writing to SD Card Over SDMMC\n", &Fil);
-	f_write(&Fil, buow_pcm_buffer, sizeof(buow_pcm_buffer), &WWC);
-	printf("Writing to SD Card \r\n\n");
+	//f_write(&Fil, &header, sizeof(wav_header), &WWC);
+	//printf("Header Bytes Written: %d\r\n", WWC);
+	f_write(&Fil, buow_pcm_buffer, buow_pcm_size, &WWC);
+	printf("Data Bytes Written: %d\r\n", WWC);
+
 
 	// Close The File
 	f_close(&Fil);
