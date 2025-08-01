@@ -272,15 +272,5 @@ void SAI4_IRQHandler(void)
   /* USER CODE END SAI4_IRQn 1 */
 }
 
-/**
-  * @brief  This function handles DMA2 Stream 1 for SAI1A interrupt request.
-  * @param  None
-  * @retval None
-  */
-//void AUDIO_OUT_SAIx_DMAx_IRQHandler(void)
-//{
-//  HAL_DMA_IRQHandler(hsai_BlockA1.hdmatx);
-//}
-
 /* USER CODE BEGIN 1 */
 /* USER CODE END 1 */

@@ -195,7 +195,7 @@ int acquire_and_process_data(ai_i8* data[], int16_t* pcm_buffer)
 
     // call DSP pipeline for PCMBuffer -> mel_spec
     printf("Calculating mel spectrogram...\n");
-    int n_frames = calculate_mel_spectrogram((const int16_t *)pcm_buffer, sizeof(pcm_buffer)/sizeof(int16_t), mel_spec,
+    int n_frames = calculate_mel_spectrogram((const int16_t *)pcm_buffer, sizeof(*pcm_buffer)/sizeof(int16_t), mel_spec,
                                              20); // max columns
 
     if (n_frames < 0) {
