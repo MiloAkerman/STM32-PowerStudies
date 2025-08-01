@@ -242,9 +242,6 @@ static void SD_Card_Power_Test(void){
 	FATFS FatFs;
 	FIL Fil;
 	FRESULT FR_Status;
-//	FATFS *FS_Ptr;
-//	DWORD FreeClusters;
-//	uint32_t TotalSize, FreeSpace;
 	UINT WWC;
 
 	// Mount the SD card
@@ -252,19 +249,13 @@ static void SD_Card_Power_Test(void){
 	if (FR_Status != FR_OK){
 		printf("Error! While Mounting SD Card, Error Code: (%i)\r\n", FR_Status);
 	}
-	//printf("SD Card Mounted Successfully! \r\n\n");
+	printf("SD Card Mounted Successfully! \r\n\n");
 
-	//Get and print the SD card size and free space
-//	f_getfree("", &FreeClusters, &FS_Ptr);
-//	TotalSize = (uint32_t)((FS_Ptr->n_fatent - 2) * FS_Ptr->csize * 0.5);
-//	FreeSpace = (uint32_t)(FreeClusters * FS_Ptr->csize * 0.5);
-//	printf("Total SD Card Size: %lu Bytes\r\n", TotalSize);
-//	printf("Free SD Card Space: %lu Bytes\r\n\n", FreeSpace);
 	HAL_Delay(1000);
 	// Toggle pin when starting to write
 	HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
 	// Open a file for writing and write to it
-	FR_Status = f_open(&Fil, "MyTextFile9.txt", FA_WRITE | FA_READ | FA_CREATE_ALWAYS);
+	FR_Status = f_open(&Fil, "BuowSample.wav", FA_WRITE | FA_READ | FA_CREATE_ALWAYS);
 	if(FR_Status != FR_OK)
 	{
 	  printf("Error! While Creating/Opening A New Text File, Error Code: (%i)\r\n", FR_Status);
@@ -274,33 +265,15 @@ static void SD_Card_Power_Test(void){
 	// Write Data To The Text File
 	//f_puts("Writing to SD Card Over SDMMC\n", &Fil);
 	f_write(&Fil, buow_pcm_buffer, sizeof(buow_pcm_buffer), &WWC);
-	//printf("Writing to SD Card \r\n\n");
+	printf("Writing to SD Card \r\n\n");
 
 	// Close The File
 	f_close(&Fil);
 
 	// Toggle pin when done writing
 	HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
-	//HAL_GPIO_WritePin(GPIOJ, GPIO_PIN_7, GPIO_PIN_RESET);
-
-	//printf("File Closed! \r\n\n");
-
-//	// Open The File for reading and read it (Take out after ensuring data is being written)
-//	FR_Status = f_open(&Fil, "MyTextFile.txt", FA_READ);
-//	if(FR_Status != FR_OK)
-//	{
-//	  printf("Error! While Opening (MyTextFile.txt) File For Read.. \r\n");
-//	  return;
-//	}
-//
-//	//Read The Text File's Data
-//	f_gets(RW_Buffer, sizeof(RW_Buffer), &Fil);
-//	printf("Data Read From (MyTextFile.txt) Using f_gets():%s", RW_Buffer);
-//
-//	// Close The File
-//	f_close(&Fil);
-//	printf("File Closed! \r\n\n");
 }
+
 /* USER CODE END 4 */
 
 /**
