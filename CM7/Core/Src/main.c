@@ -41,7 +41,8 @@ typedef enum {
 #define AUDIO_FREQUENCY       16000U
 #define AUDIO_CHANNEL_NUMBER  1U
 #define AUDIO_BUFFER_SIZE     1024U
-#define INFERENCE_BUFFER_SIZE 65536U // ~2 sec of audio (2^16; sec. per exp. of 2: 2^(x-10)/31.2 for n>=10)
+#define INFERENCE_BUFFER_SIZE 32768U //+ 25600U // ~3.5 sec of audio (2^16 + 128 * 200; 2^17 overloads .bss
+											  // sec. per exp. of 2: 2^(x-10)/31.2 for n>=10). Add in multiples of 128
 #define AUDIO_PCM_CHUNK_SIZE  16U
 #define BITS_PER_SAMPLE		  16U
 
@@ -63,10 +64,10 @@ typedef enum {
 /* Private variables ---------------------------------------------------------*/
 
 // Peripheral handlers
-SAI_HandleTypeDef hsai_BlockA1;
 SAI_HandleTypeDef hsai_BlockA4;
-DMA_HandleTypeDef hdma_sai1_a;
 DMA_HandleTypeDef hdma_sai4_a;
+SAI_HandleTypeDef hsai_BlockA1;
+DMA_HandleTypeDef hdma_sai1_a;
 SD_HandleTypeDef hsd1;
 UART_HandleTypeDef huart1;
 MDMA_HandleTypeDef hmdma_mdma_channel0_sdmmc1_end_data_0;
@@ -114,11 +115,13 @@ void PeriphCommonClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_BDMA_Init(void);
 static void MX_MDMA_Init(void);
-static void MX_DMA_Init(void);
 static void MX_USART1_UART_Init(void);
-static void MX_SAI1_Init(void);
 static void MX_SAI4_Init(void);
 static void MX_SDMMC1_SD_Init(void);
+#ifdef AUDIO_PLAYBACK
+static void MX_DMA_Init(void);
+static void MX_SAI1_Init(void);
+#endif
 /* USER CODE BEGIN PFP */
 void fir_init(void);
 void process_pcm_block(uint16_t *pcm_chunk);
@@ -186,7 +189,7 @@ int main(void)
   MX_MDMA_Init();
   MX_USART1_UART_Init();
   MX_SAI4_Init();
-  //MX_SDMMC1_SD_Init();
+  MX_SDMMC1_SD_Init();
   MX_FATFS_Init();
 #ifdef AUDIO_PLAYBACK
   MX_SAI1_Init();
@@ -202,6 +205,7 @@ int main(void)
   BSP_OutputConfig.SampleRate = AUDIO_FREQUENCY;
   BSP_OutputConfig.Volume = 60;
 
+  memset(input_buffer, 0, AUDIO_BUFFER_SIZE * sizeof(uint16_t));
   BSP_AUDIO_IN_Init(1, &BSP_OutputConfig); // unused for input, used for PDM2PCM
 
   printf("Starting Input SAI4/BDMA...\r\n");
@@ -277,11 +281,12 @@ int main(void)
 			  BSP_AUDIO_IN_PDMToPCM(1, pdm_chunk, pcm_out); // Apply PDM2PCM filter
 			  process_pcm_block(pcm_out); // Denoise PCM output with FIR filter
 			  dcache_clean(pcm_out, AUDIO_PCM_CHUNK_SIZE * sizeof(int16_t)); // Clean cache to avoid data mismatch issues
-
+			  for (int j = 0; j < AUDIO_PCM_CHUNK_SIZE; j++) {
+				  inference_buffer[inference_buffPtr + j] = output_buffer[output_buffPtr + j];
+			  }
+			  inference_buffPtr += AUDIO_PCM_CHUNK_SIZE;
 			  output_buffPtr += AUDIO_PCM_CHUNK_SIZE;
 		  }
-		  inference_buffer[inference_buffPtr] = output_buffer[output_buffPtr];
-		  inference_buffPtr += (AUDIO_BUFFER_SIZE/2);
 		  bufferStatus &= ~BUFFER_OFFSET_HALF;
 
 		  //MX_X_CUBE_AI_Process(&output_buffer[])
@@ -293,7 +298,6 @@ int main(void)
 		  // Invalidate cache to avoid data mismatch issues
 		  dcache_invalidate(&input_buffer[AUDIO_BUFFER_SIZE/2], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
 		  printf("Buffer full! \r\n");
-		  HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
 
 		  // Process the second half the same way
 		  for (int i = 0; i < (AUDIO_BUFFER_SIZE/2) / PDM_WORDS_PER_CHUNK; i++)
@@ -303,19 +307,23 @@ int main(void)
 			  BSP_AUDIO_IN_PDMToPCM(1, pdm_chunk, pcm_out);
 			  process_pcm_block(pcm_out);
 			  dcache_clean(pcm_out, AUDIO_PCM_CHUNK_SIZE * sizeof(int16_t));
-
+			  for (int j = 0; j < AUDIO_PCM_CHUNK_SIZE; j++) {
+				  inference_buffer[inference_buffPtr + j] = output_buffer[output_buffPtr + j];
+			  }
+			  inference_buffPtr += AUDIO_PCM_CHUNK_SIZE;
 			  output_buffPtr += AUDIO_PCM_CHUNK_SIZE;
 		  }
-		  inference_buffer[inference_buffPtr] = output_buffer[output_buffPtr];
-		  inference_buffPtr += (AUDIO_BUFFER_SIZE/2);
 		  bufferStatus &= ~BUFFER_OFFSET_FULL;
 	  }
 
 	  // Wrap pcm pointer if needed
 	  if (output_buffPtr >= AUDIO_BUFFER_SIZE)
 		  output_buffPtr = 0;
-	  if (inference_buffPtr >= INFERENCE_BUFFER_SIZE)
+	  if (inference_buffPtr >= INFERENCE_BUFFER_SIZE) {
+		  MX_X_CUBE_AI_Process(&inference_buffer[INFERENCE_BUFFER_SIZE/2], INFERENCE_BUFFER_SIZE);
 		  inference_buffPtr = 0;
+		  while(1) {}
+	  }
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
   }
@@ -409,6 +417,7 @@ void PeriphCommonClock_Config(void)
   }
 }
 
+#ifdef AUDIO_PLAYBACK
 /**
   * @brief SAI1 Initialization Function
   * @param None
@@ -464,6 +473,23 @@ static void MX_SAI1_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA2_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA2_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
+
+}
+#endif
+
+/**
   * @brief SAI4 Initialization Function
   * @param None
   * @retval None
@@ -487,7 +513,7 @@ static void MX_SAI4_Init(void)
   hsai_BlockA4.Init.OutputDrive = SAI_OUTPUTDRIVE_DISABLE;
   hsai_BlockA4.Init.NoDivider = SAI_MASTERDIVIDER_DISABLE;
   hsai_BlockA4.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_ENABLE;
-  hsai_BlockA4.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_EMPTY;
+  hsai_BlockA4.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_HF;
   hsai_BlockA4.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_MCKDIV;
   hsai_BlockA4.Init.Mckdiv = 6;
   hsai_BlockA4.Init.MonoStereoMode = SAI_STEREOMODE;
@@ -605,22 +631,6 @@ static void MX_BDMA_Init(void)
   /* BDMA_Channel0_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(BDMA_Channel0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(BDMA_Channel0_IRQn);
-
-}
-
-/**
-  * Enable DMA controller clock
-  */
-static void MX_DMA_Init(void)
-{
-
-  /* DMA controller clock enable */
-  __HAL_RCC_DMA2_CLK_ENABLE();
-
-  /* DMA interrupt init */
-  /* DMA2_Stream1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
 
 }
 

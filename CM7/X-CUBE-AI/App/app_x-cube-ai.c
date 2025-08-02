@@ -62,6 +62,10 @@
 
 
 /* USER CODE BEGIN includes */
+#define MEL_BANDS 64
+#define FFT_SIZE 512
+#define HOP_LENGTH 128
+#define MAX_FRAMES 80
 /* USER CODE END includes */
 
 /* IO buffers ----------------------------------------------------------------*/
@@ -172,57 +176,49 @@ static int ai_run(void)
   return 0;
 }
 /* USER CODE BEGIN 2 */
-int acquire_and_process_data(ai_i8* data[], int16_t* pcm_buffer)
+int acquire_and_process_data(ai_i8 *data[], uint16_t *pcm_buffer, uint32_t pcm_size)
 {
 
   // TODO: move spectrogram conversion to a different place
 
   // define configuration - match trained model
-    MelSpectrogramConfig_t config = {.fft_size = 512,
-                                     .hop_length = 256,
-                                     .n_mels = 64,
+    MelSpectrogramConfig_t config = {.fft_size = FFT_SIZE,
+                                     .hop_length = HOP_LENGTH,
+                                     .n_mels = MEL_BANDS,
                                      .sample_rate = 16000.0f,
                                      .f_min = 0.0f,
                                      .f_max = 8000.0f};
 
-    mel_spectrogram_init(&config);
+    if (mel_spectrogram_init(&config) != 0) {
+		printf("Mel spectrogram init failed.\n");
+		return -1;
+	}
 
     // output spectrogram buffer
     // n_mels x n_frames
-    static float mel_spec[64 * 20]; // 64 mel bands, 20 frames (for 512 samples, hop_length=256)
+    static float mel_spec[MEL_BANDS * MAX_FRAMES]; // 64 mel bands, 20 frames (for 512 samples, hop_length=256)
     // zero out mel spectrogram buffer
     memset(mel_spec, 0, sizeof(mel_spec));
 
     // call DSP pipeline for PCMBuffer -> mel_spec
-    printf("Calculating mel spectrogram...\n");
-    int n_frames = calculate_mel_spectrogram((const int16_t *)pcm_buffer, sizeof(*pcm_buffer)/sizeof(int16_t), mel_spec,
-                                             20); // max columns
+    printf("Calculating mel spectrogram...\r\n");
+    int n_frames = calculate_mel_spectrogram((const int16_t *)pcm_buffer, pcm_size, mel_spec, MAX_FRAMES); // max columns
 
     if (n_frames < 0) {
-	   printf("Spectrogram calculation failed.\n");
+	   printf("Spectrogram calculation failed.\r\n");
 	   return -1;
    }
 
     // normalize to [0, 1]
-    normalize_spectrogram(mel_spec, config.n_mels, n_frames);
+    normalize_spectrogram(mel_spec, MEL_BANDS, n_frames);
 
-//    // dump to CSV
-//	FILE *f = fopen("spectrogram.csv", "w");
-//	if (!f) {
-//		perror("Failed to open spectrogram.csv");
-//		return -1;
-//	}
-//
-//	for (int i = 0; i < 64; ++i) {
-//		for (int j = 0; j < 20; ++j) {
-//			fprintf(f, "%.6f", mel_spec[i * 20 + j]);
-//			if (j < 20 - 1) fprintf(f, ",");
-//		}
-//		fprintf(f, "\n");
-//	}
-//
-//	fclose(f);
-//	printf("Spectrogram saved to spectrogram.csv\n");
+	for (int i = 0; i < MEL_BANDS; ++i) {
+		for (int j = 0; j < MAX_FRAMES; ++j) {
+			printf("%.6f", mel_spec[i * MAX_FRAMES + j]);
+			if (j < MAX_FRAMES - 1) printf(",");
+		}
+		printf("\r\n");
+	}
 
 
     float *dst = (float *)data[0];
@@ -291,7 +287,7 @@ void MX_X_CUBE_AI_Init(void)
 }
 
 /* USER CODE BEGIN 6 */
-void MX_X_CUBE_AI_Process(int16_t *pcm_buffer)
+void MX_X_CUBE_AI_Process(uint16_t *pcm_buffer, uint32_t pcm_size)
 {
 
   int res = -1;
@@ -301,10 +297,10 @@ void MX_X_CUBE_AI_Process(int16_t *pcm_buffer)
     do {
       /* 1 - acquire and pre-process input data */
       printf("processing data...\r\n");
-      res = acquire_and_process_data(data_ins, pcm_buffer);
+      res = acquire_and_process_data(data_ins, pcm_buffer, pcm_size);
       /* 2 - process the data - call inference engine */
       if (res == 0){
-    	printf("running inference...\r\n");
+    	printf("running inference on %ld PCM samples...\r\n", pcm_size);
         res = ai_run();
       }
       /* 3- post-process the predictions */
