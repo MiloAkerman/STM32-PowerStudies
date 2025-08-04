@@ -24,48 +24,88 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "buow_sample_pcm.h"
-#include "string.h"
-#include <stdint.h>
-#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef enum {
+  BUFFER_OFFSET_NONE = 0,
+  BUFFER_OFFSET_HALF,
+  BUFFER_OFFSET_FULL,
+} BUFFER_StateTypeDef;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-/* DUAL_CORE_BOOT_SYNC_SEQUENCE: Define for dual core boot synchronization    */
-/*                             demonstration code based on hardware semaphore */
-/* This define is present in both CM7/CM4 projects                            */
-/* To comment when developping/debugging on a single core                     */
-// #define DUAL_CORE_BOOT_SYNC_SEQUENCE
+// SAI audio constants
+#define AUDIO_FREQUENCY       16000U
+#define AUDIO_CHANNEL_NUMBER  1U
+#define AUDIO_BUFFER_SIZE     1024U
+#define INFERENCE_BUFFER_SIZE 32768U //+ 25600U // ~3.5 sec of audio (2^16 + 128 * 200; 2^17 overloads .bss
+											  // sec. per exp. of 2: 2^(x-10)/31.2 for n>=10). Add in multiples of 128
+#define AUDIO_PCM_CHUNK_SIZE  16U
+#define BITS_PER_SAMPLE		  16U
 
-#if defined(DUAL_CORE_BOOT_SYNC_SEQUENCE)
-#ifndef HSEM_ID_0
-#define HSEM_ID_0 (0U) /* HW semaphore 0*/
-#endif
-#endif /* DUAL_CORE_BOOT_SYNC_SEQUENCE */
+// PDM2PCM filter constants
+#define DECIMATION_FACTOR     64U
+#define PDM_WORDS_PER_CHUNK   (AUDIO_PCM_CHUNK_SIZE * DECIMATION_FACTOR / BITS_PER_SAMPLE)
 
+// DSP noise reduction constants
+#define FIR_TAPS        64
+
+// Uncomment to enable headphone audio playback
+// #define AUDIO_PLAYBACK
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 
+// Peripheral handlers
 SAI_HandleTypeDef hsai_BlockA4;
 DMA_HandleTypeDef hdma_sai4_a;
-
+SAI_HandleTypeDef hsai_BlockA1;
+DMA_HandleTypeDef hdma_sai1_a;
 SD_HandleTypeDef hsd1;
-
 UART_HandleTypeDef huart1;
-
 MDMA_HandleTypeDef hmdma_mdma_channel0_sdmmc1_end_data_0;
+
+/* USER CODE BEGIN 0 */
+
+// SAI SETUP for audio retrieval and output
+// input_buffer must be located in RAM_D3 since it is accessed by BDMA
+uint16_t input_buffer[AUDIO_BUFFER_SIZE] __attribute__((section(".DATA_RAM_D3")));
+uint16_t inference_buffer[INFERENCE_BUFFER_SIZE];
+volatile uint32_t inference_buffPtr;
+uint16_t output_buffer[AUDIO_BUFFER_SIZE];
+volatile uint32_t output_buffPtr;
+
+volatile BUFFER_StateTypeDef bufferStatus = BUFFER_OFFSET_NONE;
+
+// FIR SETUP for denoising
+/* 32-tap:
+ * -42,  -62, -120, -203,  -196,  173,   634,  1030,
+    827,  -183, -1491, -2570, -2067, 256,  4038,  7590,
+    7590, 4038,  256, -2067, -2570, -1491, -183,   827,
+    1030,  634,  173,  -196,  -203, -120,   -62,   -42
+ */
+const q15_t firCoeffs[FIR_TAPS] = {
+		-12,  -18,  -38,  -60,  -65,  -34,   44,  189,
+		384,  594,  766,  823,  690,  369,  -18, -420,
+	   -711,  -793,  -591,  -140,  436, 1027, 1477, 1611,
+	   1365,  711,  -52,  -740, -1214, -1328, -976,  -236,
+		658, 1381, 1835, 1810, 1290,  415, -613, -1514,
+	  -2074, -2052, -1442, -390,  738, 1728, 2417, 2571,
+	   2127, 1222,  145, -821, -1511, -1704, -1296,  -496,
+		477, 1250, 1640, 1578, 1034,  201, -766, -1492
+};
+static q15_t firState[FIR_TAPS + AUDIO_PCM_CHUNK_SIZE - 1];
+static arm_fir_instance_q15 S;
+
+/* USER CODE END 0 */
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -79,7 +119,15 @@ static void MX_MDMA_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_SAI4_Init(void);
 static void MX_SDMMC1_SD_Init(void);
+#ifdef AUDIO_PLAYBACK
+static void MX_DMA_Init(void);
+static void MX_SAI1_Init(void);
+#endif
 /* USER CODE BEGIN PFP */
+void fir_init(void);
+void process_pcm_block(uint16_t *pcm_chunk);
+static void dcache_invalidate(void *addr, uint32_t size);
+static void dcache_clean(void *addr, uint32_t size);
 static void SD_Card_Power_Test(void);
 void create_wav_header(wav_header *header,
 		int sample_rate, int num_channels, int bit_depth, int data_size);
@@ -87,27 +135,14 @@ void create_wav_header(wav_header *header,
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+/**
+ * @brief  Re-implementation of printf() to operate with USART
+ */
 int _write(int file, char *ptr, int len) {
     HAL_UART_Transmit(&huart1, (uint8_t *)ptr, len, HAL_MAX_DELAY);
     return len;
 }
-
-float calculate_decibel(int16_t *buffer, size_t size) {
-    float sum = 0.0f;
-
-    for (size_t i = 0; i < size; i++) {
-        float voltage = (float)buffer[i] / 32768.0f; // Normalize 16-bit value
-        sum += voltage * voltage;
-    }
-
-    float rms = sqrtf(sum / size);
-    float spl = 20.0f * log10f(rms / REFERENCE_VOLTAGE);
-
-    return spl;
-}
-
-int16_t audio_buffer[BUFFER_SIZE] __attribute__((section(".DATA_RAM_D3")));
-/* USER CODE END 0 */
 
 /**
   * @brief  The application entry point.
@@ -117,12 +152,8 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-	//memset(audio_buffer, 0xAA, sizeof(audio_buffer)); // Initialize buffer
   /* USER CODE END 1 */
 /* USER CODE BEGIN Boot_Mode_Sequence_0 */
-#if defined(DUAL_CORE_BOOT_SYNC_SEQUENCE)
-  int32_t timeout;
-#endif /* DUAL_CORE_BOOT_SYNC_SEQUENCE */
 /* USER CODE END Boot_Mode_Sequence_0 */
 
   /* Enable the CPU Cache */
@@ -134,15 +165,6 @@ int main(void)
   SCB_EnableDCache();
 
 /* USER CODE BEGIN Boot_Mode_Sequence_1 */
-#if defined(DUAL_CORE_BOOT_SYNC_SEQUENCE)
-  /* Wait until CPU2 boots and enters in stop mode or timeout*/
-  timeout = 0xFFFF;
-  while((__HAL_RCC_GET_FLAG(RCC_FLAG_D2CKRDY) != RESET) && (timeout-- > 0));
-  if ( timeout < 0 )
-  {
-  Error_Handler();
-  }
-#endif /* DUAL_CORE_BOOT_SYNC_SEQUENCE */
 /* USER CODE END Boot_Mode_Sequence_1 */
   /* MCU Configuration--------------------------------------------------------*/
 
@@ -159,23 +181,6 @@ int main(void)
   /* Configure the peripherals common clocks */
   PeriphCommonClock_Config();
 /* USER CODE BEGIN Boot_Mode_Sequence_2 */
-#if defined(DUAL_CORE_BOOT_SYNC_SEQUENCE)
-/* When system initialization is finished, Cortex-M7 will release Cortex-M4 by means of
-HSEM notification */
-/*HW semaphore Clock enable*/
-__HAL_RCC_HSEM_CLK_ENABLE();
-/*Take HSEM */
-HAL_HSEM_FastTake(HSEM_ID_0);
-/*Release HSEM in order to notify the CPU2(CM4)*/
-HAL_HSEM_Release(HSEM_ID_0,0);
-/* wait until CPU2 wakes up from stop mode */
-timeout = 0xFFFF;
-while((__HAL_RCC_GET_FLAG(RCC_FLAG_D2CKRDY) == RESET) && (timeout-- > 0));
-if ( timeout < 0 )
-{
-Error_Handler();
-}
-#endif /* DUAL_CORE_BOOT_SYNC_SEQUENCE */
 /* USER CODE END Boot_Mode_Sequence_2 */
 
   /* USER CODE BEGIN SysInit */
@@ -190,22 +195,53 @@ Error_Handler();
   MX_SAI4_Init();
   MX_SDMMC1_SD_Init();
   MX_FATFS_Init();
+#ifdef AUDIO_PLAYBACK
+  MX_SAI1_Init();
+  MX_DMA_Init();
+#endif
   MX_X_CUBE_AI_Init();
   /* USER CODE BEGIN 2 */
 
-  //HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
+  BSP_AUDIO_Init_t BSP_OutputConfig = {0};
+  BSP_OutputConfig.BitsPerSample = BITS_PER_SAMPLE;
+  BSP_OutputConfig.ChannelsNbr = AUDIO_CHANNEL_NUMBER;
+  BSP_OutputConfig.Device = WM8994_OUT_HEADPHONE;
+  BSP_OutputConfig.SampleRate = AUDIO_FREQUENCY;
+  BSP_OutputConfig.Volume = 60;
 
-  // TODO: Cache invalidation to avoid disabling cache
-  //SCB_InvalidateDCache_by_Addr((uint32_t*)(((uint32_t)audio_buffer) & ~(uint32_t)0x1F), sizeof(audio_buffer)+32);
+  memset(input_buffer, 0, AUDIO_BUFFER_SIZE * sizeof(uint16_t));
+  BSP_AUDIO_IN_Init(1, &BSP_OutputConfig); // unused for input, used for PDM2PCM
 
-  printf("Starting SAI DMA...\r\n");
-  if (HAL_SAI_Receive_DMA(&hsai_BlockA4, (uint8_t *)audio_buffer, sizeof(audio_buffer)) != HAL_OK) {
-	  printf("SAI DMA initialization failed! Error: %ld\r\n", hsai_BlockA4.ErrorCode);
+  printf("Starting Input SAI4/BDMA...\r\n");
+
+  HAL_StatusTypeDef input_init_response;
+  input_init_response = HAL_SAI_Receive_DMA(&hsai_BlockA4, (uint8_t *)input_buffer, AUDIO_BUFFER_SIZE);
+  if (input_init_response != HAL_OK) {
+	  printf("SAI4/BDMA initialization failed! Error: %d\r\n", input_init_response);
   } else {
-	  printf("SAI DMA started successfully.\r\n");
+	  printf("SAI4/BDMA started successfully.\r\n");
   }
 
+#ifdef AUDIO_PLAYBACK
+  BSP_AUDIO_OUT_Init(1, &BSP_OutputConfig);
+  printf("Starting Output SAI1/DMA...\r\n");
+
+  int32_t output_init_response;
+  output_init_response = BSP_AUDIO_OUT_Play(1, (uint8_t *)output_buffer, sizeof(output_buffer));
+  if (output_init_response != BSP_ERROR_NONE) {
+	  printf("SAI1/DMA initialization failed! Error: %ld\r\n", output_init_response);
+  } else {
+	  printf("SAI1/DMA started successfully.\r\n");
+  }
+#endif
+
+  // Initialize FIR filter
+  fir_init();
+  // Initialize PDM2PCM filter
+  BSP_AUDIO_IN_PDMToPCM_Init(1, AUDIO_FREQUENCY, AUDIO_CHANNEL_NUMBER, AUDIO_CHANNEL_NUMBER);
+
   SD_Card_Power_Test();
+  
   // TODO: Remove power testing code when done
   //  Testing the power consumption in sleep mode
 //  HAL_Delay(2000);
@@ -214,23 +250,87 @@ Error_Handler();
 //  HAL_ResumeTick();
 
   //  Test the power consumption in standby mode
-   //HAL_Delay(1000);
-//   HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN4);
-//   HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN4);
-//   __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
-//   HAL_PWR_EnterSTANDBYMode();
+//  HAL_Delay(2000);
+//  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+//  HAL_PWR_EnterSTANDBYMode();
 
+  // Test the power consumption in standby mode
+//  HAL_Delay(2000);
+//  HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);
+//  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
+//  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+//  HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1);
+//	HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
+//  HAL_PWREx_EnterSTANDBYMode(PWR_D2_DOMAIN);
+//  HAL_PWREx_EnterSTANDBYMode(PWR_D1_DOMAIN);
+
+  /* Initialize Rx buffer status */
+  bufferStatus &= BUFFER_OFFSET_NONE;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//	  if(HAL_GPIO_ReadPin(GPIOJ, GPIO_PIN_0)){
-//		  printf("GPIO INPUT WORKING\n");
-//	  }
-    /* USER CODE END WHILE */
 
+	  // Wait for half-buffer
+	  if ((bufferStatus & BUFFER_OFFSET_HALF) == BUFFER_OFFSET_HALF)
+	  {
+		  // Invalidate cache to avoid data mismatch issues
+		  dcache_invalidate(&input_buffer[0], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
+		  printf("Buffer half full! \r\n");
+		  // Process the first half of PDM buffer to PCM
+		  for (int i = 0; i < (AUDIO_BUFFER_SIZE/2) / PDM_WORDS_PER_CHUNK; i++)
+		  {
+			  uint16_t *pdm_chunk = &input_buffer[i * PDM_WORDS_PER_CHUNK];
+			  uint16_t  *pcm_out    = &output_buffer[output_buffPtr];
+			  BSP_AUDIO_IN_PDMToPCM(1, pdm_chunk, pcm_out); // Apply PDM2PCM filter
+			  process_pcm_block(pcm_out); // Denoise PCM output with FIR filter
+			  dcache_clean(pcm_out, AUDIO_PCM_CHUNK_SIZE * sizeof(int16_t)); // Clean cache to avoid data mismatch issues
+			  for (int j = 0; j < AUDIO_PCM_CHUNK_SIZE; j++) {
+				  inference_buffer[inference_buffPtr + j] = output_buffer[output_buffPtr + j];
+			  }
+			  inference_buffPtr += AUDIO_PCM_CHUNK_SIZE;
+			  output_buffPtr += AUDIO_PCM_CHUNK_SIZE;
+		  }
+		  bufferStatus &= ~BUFFER_OFFSET_HALF;
+
+		  //MX_X_CUBE_AI_Process(&output_buffer[])
+	  }
+
+	  // Wait for full-buffer
+	  if ((bufferStatus & BUFFER_OFFSET_FULL) == BUFFER_OFFSET_FULL)
+	  {
+		  // Invalidate cache to avoid data mismatch issues
+		  dcache_invalidate(&input_buffer[AUDIO_BUFFER_SIZE/2], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
+		  printf("Buffer full! \r\n");
+
+		  // Process the second half the same way
+		  for (int i = 0; i < (AUDIO_BUFFER_SIZE/2) / PDM_WORDS_PER_CHUNK; i++)
+		  {
+			  uint16_t *pdm_chunk = &input_buffer[AUDIO_BUFFER_SIZE/2 + i * PDM_WORDS_PER_CHUNK];
+			  uint16_t  *pcm_out    = &output_buffer[output_buffPtr];
+			  BSP_AUDIO_IN_PDMToPCM(1, pdm_chunk, pcm_out);
+			  process_pcm_block(pcm_out);
+			  dcache_clean(pcm_out, AUDIO_PCM_CHUNK_SIZE * sizeof(int16_t));
+			  for (int j = 0; j < AUDIO_PCM_CHUNK_SIZE; j++) {
+				  inference_buffer[inference_buffPtr + j] = output_buffer[output_buffPtr + j];
+			  }
+			  inference_buffPtr += AUDIO_PCM_CHUNK_SIZE;
+			  output_buffPtr += AUDIO_PCM_CHUNK_SIZE;
+		  }
+		  bufferStatus &= ~BUFFER_OFFSET_FULL;
+	  }
+
+	  // Wrap pcm pointer if needed
+	  if (output_buffPtr >= AUDIO_BUFFER_SIZE)
+		  output_buffPtr = 0;
+	  if (inference_buffPtr >= INFERENCE_BUFFER_SIZE) {
+		  MX_X_CUBE_AI_Process(&inference_buffer[INFERENCE_BUFFER_SIZE/2], INFERENCE_BUFFER_SIZE);
+		  inference_buffPtr = 0;
+		  while(1) {}
+	  }
+    /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -336,10 +436,6 @@ void SystemClock_Config(void)
 
   while(!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {}
 
-  /** Macro to configure the PLL clock source
-  */
-  __HAL_RCC_PLL_PLLSOURCE_CONFIG(RCC_PLLSOURCE_HSE);
-
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
@@ -347,7 +443,16 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.HSIState = RCC_HSI_DIV1;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLM = 5;
+  RCC_OscInitStruct.PLL.PLLN = 30;
+  RCC_OscInitStruct.PLL.PLLP = 6;
+  RCC_OscInitStruct.PLL.PLLQ = 6;
+  RCC_OscInitStruct.PLL.PLLR = 2;
+  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_2;
+  RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOMEDIUM;
+  RCC_OscInitStruct.PLL.PLLFRACN = 0;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -382,22 +487,94 @@ void PeriphCommonClock_Config(void)
 
   /** Initializes the peripherals clock
   */
-  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_SAI4A|RCC_PERIPHCLK_SDMMC;
-  PeriphClkInitStruct.PLL2.PLL2M = 2;
-  PeriphClkInitStruct.PLL2.PLL2N = 32;
-  PeriphClkInitStruct.PLL2.PLL2P = 8;
-  PeriphClkInitStruct.PLL2.PLL2Q = 2;
-  PeriphClkInitStruct.PLL2.PLL2R = 4;
-  PeriphClkInitStruct.PLL2.PLL2RGE = RCC_PLL2VCIRANGE_3;
+  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_SAI4A|RCC_PERIPHCLK_SAI1;
+  PeriphClkInitStruct.PLL2.PLL2M = 21;
+  PeriphClkInitStruct.PLL2.PLL2N = 289;
+  PeriphClkInitStruct.PLL2.PLL2P = 7;
+  PeriphClkInitStruct.PLL2.PLL2Q = 7;
+  PeriphClkInitStruct.PLL2.PLL2R = 7;
+  PeriphClkInitStruct.PLL2.PLL2RGE = RCC_PLL2VCIRANGE_0;
   PeriphClkInitStruct.PLL2.PLL2VCOSEL = RCC_PLL2VCOWIDE;
   PeriphClkInitStruct.PLL2.PLL2FRACN = 0;
-  PeriphClkInitStruct.SdmmcClockSelection = RCC_SDMMCCLKSOURCE_PLL2;
+  PeriphClkInitStruct.Sai1ClockSelection = RCC_SAI1CLKSOURCE_PLL2;
   PeriphClkInitStruct.Sai4AClockSelection = RCC_SAI4ACLKSOURCE_PLL2;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
   {
     Error_Handler();
   }
 }
+
+#ifdef AUDIO_PLAYBACK
+/**
+  * @brief SAI1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SAI1_Init(void)
+{
+
+  /* USER CODE BEGIN SAI1_Init 0 */
+	__HAL_RCC_SAI1_CLK_ENABLE();
+  /* USER CODE END SAI1_Init 0 */
+
+  /* USER CODE BEGIN SAI1_Init 1 */
+
+  /* USER CODE END SAI1_Init 1 */
+  hsai_BlockA1.Instance = SAI1_Block_A;
+  hsai_BlockA1.Init.Protocol = SAI_FREE_PROTOCOL;
+  hsai_BlockA1.Init.AudioMode = SAI_MODEMASTER_TX;
+  hsai_BlockA1.Init.DataSize = SAI_DATASIZE_16;
+  hsai_BlockA1.Init.FirstBit = SAI_FIRSTBIT_MSB;
+  hsai_BlockA1.Init.ClockStrobing = SAI_CLOCKSTROBING_FALLINGEDGE;
+  hsai_BlockA1.Init.Synchro = SAI_ASYNCHRONOUS;
+  hsai_BlockA1.Init.OutputDrive = SAI_OUTPUTDRIVE_DISABLE;
+  hsai_BlockA1.Init.NoDivider = SAI_MASTERDIVIDER_DISABLE;
+  hsai_BlockA1.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_ENABLE;
+  hsai_BlockA1.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_EMPTY;
+  hsai_BlockA1.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_16K;
+  //hsai_BlockA1.Init.Mckdiv = 6;
+  hsai_BlockA1.Init.SynchroExt = SAI_SYNCEXT_DISABLE;
+  hsai_BlockA1.Init.MonoStereoMode = SAI_MONOMODE;
+  hsai_BlockA1.Init.CompandingMode = SAI_NOCOMPANDING;
+  hsai_BlockA1.Init.TriState = SAI_OUTPUT_NOTRELEASED;
+  hsai_BlockA1.Init.PdmInit.Activation = DISABLE;
+  hsai_BlockA1.Init.PdmInit.MicPairsNbr = 1;
+  hsai_BlockA1.Init.PdmInit.ClockEnable = SAI_PDM_CLOCK1_ENABLE;
+  hsai_BlockA1.FrameInit.FrameLength = 128;
+  hsai_BlockA1.FrameInit.ActiveFrameLength = 1;
+  hsai_BlockA1.FrameInit.FSDefinition = SAI_FS_STARTFRAME;
+  hsai_BlockA1.FrameInit.FSPolarity = SAI_FS_ACTIVE_LOW;
+  hsai_BlockA1.FrameInit.FSOffset = SAI_FS_FIRSTBIT;
+  hsai_BlockA1.SlotInit.FirstBitOffset = 0;
+  hsai_BlockA1.SlotInit.SlotSize = SAI_SLOTSIZE_DATASIZE;
+  hsai_BlockA1.SlotInit.SlotNumber = 4;
+  hsai_BlockA1.SlotInit.SlotActive = 0x00000005;
+  if (HAL_SAI_Init(&hsai_BlockA1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SAI1_Init 2 */
+
+  /* USER CODE END SAI1_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA2_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA2_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
+
+}
+#endif
 
 /**
   * @brief SAI4 Initialization Function
@@ -421,10 +598,11 @@ static void MX_SAI4_Init(void)
   hsai_BlockA4.Init.ClockStrobing = SAI_CLOCKSTROBING_FALLINGEDGE;
   hsai_BlockA4.Init.Synchro = SAI_ASYNCHRONOUS;
   hsai_BlockA4.Init.OutputDrive = SAI_OUTPUTDRIVE_DISABLE;
-  hsai_BlockA4.Init.NoDivider = SAI_MCK_OVERSAMPLING_ENABLE;
+  hsai_BlockA4.Init.NoDivider = SAI_MASTERDIVIDER_DISABLE;
   hsai_BlockA4.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_ENABLE;
-  hsai_BlockA4.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_EMPTY;
-  hsai_BlockA4.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_16K;
+  hsai_BlockA4.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_HF;
+  hsai_BlockA4.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_MCKDIV;
+  hsai_BlockA4.Init.Mckdiv = 6;
   hsai_BlockA4.Init.MonoStereoMode = SAI_STEREOMODE;
   hsai_BlockA4.Init.CompandingMode = SAI_NOCOMPANDING;
   hsai_BlockA4.Init.PdmInit.Activation = ENABLE;
@@ -609,31 +787,74 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOJ_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOJ, GPIO_PIN_0, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin : PG13 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOJ, &GPIO_InitStruct);
-
-  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOJ, GPIO_PIN_7, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : PG13 */
+  /*Configure GPIO pin : PJ7 */
   GPIO_InitStruct.Pin = GPIO_PIN_7;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOJ, &GPIO_InitStruct);
 
-  /* USER CODE BEGIN MX_GPIO_Init_2 */
-  // Enable GPIOJ clock
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+
+/**
+  * @brief  Config the FIR filter for PCM denoising
+  * @param  None
+  * @retval None
+  */
+void fir_init(void) {
+    arm_fir_init_q15(&S, FIR_TAPS, (q15_t *)firCoeffs, firState, AUDIO_PCM_CHUNK_SIZE);
+}
+
+/**
+  * @brief  Apply FIR filter to PCM chunk for denoising
+  * @param  pcm_chunk : Pointer to PCM chunk to be processed
+  * @retval None
+  */
+void process_pcm_block(uint16_t *pcm_chunk) {
+    // Allocate a temporary buffer to keep original unfiltered PCM.
+    q15_t filtered[AUDIO_PCM_CHUNK_SIZE];
+
+    // Run the FIR: input is q15_t, but int16_t map directly to q15_t
+    arm_fir_q15(&S,
+                (q15_t *)pcm_chunk,  // source buffer
+                filtered,            // destination buffer
+				AUDIO_PCM_CHUNK_SIZE);     // number of samples
+
+    // Copy back filtered output to pcm_chunk
+    for (int i = 0; i < AUDIO_PCM_CHUNK_SIZE; i++) {
+        pcm_chunk[i] = filtered[i];
+    }
+}
+
+/**
+  * @brief  Invalidate portion of DCache
+  * @param  addr : Address of memory location to be invalidated
+  * @param  size : Size of memory chunk to be invalidated
+  * @retval None
+  */
+static void dcache_invalidate(void *addr, uint32_t size) {
+    uint32_t a = (uint32_t)addr & ~31U;
+    uint32_t s = ((size + 31U) & ~31U);
+    SCB_InvalidateDCache_by_Addr((uint32_t*)a, s);
+}
+
+/**
+  * @brief  Clean portion of DCache
+  * @param  addr : Address of memory location to be cleaned
+  * @param  size : Size of memory chunk to be cleaned
+  * @retval None
+  */
+static void dcache_clean(void *addr, uint32_t size) {
+    uint32_t a = (uint32_t)addr & ~31U;
+    uint32_t s = ((size + 31U) & ~31U);
+    SCB_CleanDCache_by_Addr((uint32_t*)a, s);
+}
+
 /**
   * @brief  Rx Transfer completed callbacks.
   * @param  hsai : pointer to a SAI_HandleTypeDef structure that contains
@@ -642,22 +863,7 @@ static void MX_GPIO_Init(void)
   */
 void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai)
 {
-  /* NOTE : This function Should not be modified, when the callback is needed,
-            the HAL_SAI_RxCpltCallback could be implemented in the user file
-   */
-//	printf("Buffer Full!! =======================================\r\n");
-//	printf("SAI State: %d \r\n", HAL_SAI_GetState(&hsai_BlockA4));
-//	printf("SAI Error: %lu \r\n", HAL_SAI_GetError(&hsai_BlockA4));
-//	printf("SAI Buffer Address: 0x%08lx\r\n", SAI4_Block_A->DR);  // this should change over time if data is coming in
-//	printf("DMA State: %d \r\n", HAL_DMA_GetState(&hdma_sai4_a));
-//	printf("DMA Error: %lu \r\n", HAL_DMA_GetError(&hdma_sai4_a));
-//	printf("Pointer location: %p \r\n", audio_buffer);
-//	printf("Audio Buffer Data:\r\n");
-//	for (int i = 0; i < 10; i++) {
-//		printf("[%d]: %d\r\n", i, audio_buffer[i]);
-//	}
-//	float decibel_level = calculate_decibel(audio_buffer, BUFFER_SIZE);
-//	printf("SPL: %.2f dB\r\n", decibel_level);
+	bufferStatus |= BUFFER_OFFSET_FULL;
 }
 
 /**
@@ -668,10 +874,7 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai)
   */
 void HAL_SAI_RxHalfCpltCallback(SAI_HandleTypeDef *hsai)
 {
-  /* NOTE : This function Should not be modified, when the callback is needed,
-            the HAL_SAI_RxHalfCpltCallback could be implenetd in the user file
-   */
-	//printf("Buffer Half Full!! ==================================\r\n");
+	bufferStatus |= BUFFER_OFFSET_HALF;
 }
 /* USER CODE END 4 */
 
@@ -690,6 +893,7 @@ void Error_Handler(void)
   }
   /* USER CODE END Error_Handler_Debug */
 }
+
 #ifdef USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
