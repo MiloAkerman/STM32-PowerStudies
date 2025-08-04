@@ -23,6 +23,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "buow_sample_pcm.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
