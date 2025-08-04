@@ -31,8 +31,17 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#define BUFFER_SIZE 4096 // Size of the audio buffer
-#define REFERENCE_VOLTAGE 0.00002f
+#include "stm32h747i_discovery.h"
+#include "stm32h747i_discovery_bus.h"
+#include "stm32h747i_discovery_audio.h"
+#include "audio.h"
+#include "wm8994.h"
+#include "pdm2pcm_glo.h"
+#include "arm_math.h"
+
+#include "math.h"
+#include <stdio.h>
+#include <string.h> // Added for memset
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -42,7 +51,7 @@ extern SAI_HandleTypeDef hsai_BlockA4;
 
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
-
+#define AUDIO_IRQ_PREPRIO                    ((uint32_t)0x0E)
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/
