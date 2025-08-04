@@ -64,8 +64,8 @@
 /* USER CODE BEGIN includes */
 #define MEL_BANDS 64
 #define FFT_SIZE 512
-#define HOP_LENGTH 128
-#define MAX_FRAMES 80
+#define HOP_LENGTH 62
+#define MAX_FRAMES 258
 /* USER CODE END includes */
 
 /* IO buffers ----------------------------------------------------------------*/
