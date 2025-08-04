@@ -127,6 +127,7 @@ void fir_init(void);
 void process_pcm_block(uint16_t *pcm_chunk);
 static void dcache_invalidate(void *addr, uint32_t size);
 static void dcache_clean(void *addr, uint32_t size);
+static void SD_Card_Power_Test(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -236,6 +237,8 @@ int main(void)
   // Initialize PDM2PCM filter
   BSP_AUDIO_IN_PDMToPCM_Init(1, AUDIO_FREQUENCY, AUDIO_CHANNEL_NUMBER, AUDIO_CHANNEL_NUMBER);
 
+  SD_Card_Power_Test();
+  
   // TODO: Remove power testing code when done
   //  Testing the power consumption in sleep mode
 //  HAL_Delay(2000);
@@ -329,6 +332,75 @@ int main(void)
   }
   /* USER CODE END 3 */
 }
+/* USER CODE BEGIN 4 */
+/**
+  * @brief SD Card Power Test
+  * @retval None
+  */
+static void SD_Card_Power_Test(void){
+	FATFS FatFs;
+	FIL Fil;
+	FRESULT FR_Status;
+//	FATFS *FS_Ptr;
+//	DWORD FreeClusters;
+//	uint32_t TotalSize, FreeSpace;
+	UINT WWC;
+
+	// Mount the SD card
+	FR_Status = f_mount(&FatFs, SDPath, 1);
+	if (FR_Status != FR_OK){
+		printf("Error! While Mounting SD Card, Error Code: (%i)\r\n", FR_Status);
+	}
+	//printf("SD Card Mounted Successfully! \r\n\n");
+
+	//Get and print the SD card size and free space
+//	f_getfree("", &FreeClusters, &FS_Ptr);
+//	TotalSize = (uint32_t)((FS_Ptr->n_fatent - 2) * FS_Ptr->csize * 0.5);
+//	FreeSpace = (uint32_t)(FreeClusters * FS_Ptr->csize * 0.5);
+//	printf("Total SD Card Size: %lu Bytes\r\n", TotalSize);
+//	printf("Free SD Card Space: %lu Bytes\r\n\n", FreeSpace);
+	HAL_Delay(1000);
+	// Toggle pin when starting to write
+	HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
+	// Open a file for writing and write to it
+	FR_Status = f_open(&Fil, "MyTextFile9.txt", FA_WRITE | FA_READ | FA_CREATE_ALWAYS);
+	if(FR_Status != FR_OK)
+	{
+	  printf("Error! While Creating/Opening A New Text File, Error Code: (%i)\r\n", FR_Status);
+	  return;
+	}
+
+	// Write Data To The Text File
+	//f_puts("Writing to SD Card Over SDMMC\n", &Fil);
+	f_write(&Fil, buow_pcm_buffer, sizeof(buow_pcm_buffer), &WWC);
+	//printf("Writing to SD Card \r\n\n");
+
+	// Close The File
+	f_close(&Fil);
+
+	// Toggle pin when done writing
+	HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
+	//HAL_GPIO_WritePin(GPIOJ, GPIO_PIN_7, GPIO_PIN_RESET);
+
+	//printf("File Closed! \r\n\n");
+
+//	// Open The File for reading and read it (Take out after ensuring data is being written)
+//	FR_Status = f_open(&Fil, "MyTextFile.txt", FA_READ);
+//	if(FR_Status != FR_OK)
+//	{
+//	  printf("Error! While Opening (MyTextFile.txt) File For Read.. \r\n");
+//	  return;
+//	}
+//
+//	//Read The Text File's Data
+//	f_gets(RW_Buffer, sizeof(RW_Buffer), &Fil);
+//	printf("Data Read From (MyTextFile.txt) Using f_gets():%s", RW_Buffer);
+//
+//	// Close The File
+//	f_close(&Fil);
+//	printf("File Closed! \r\n\n");
+}
+/* USER CODE END 4 */
 
 /**
   * @brief System Clock Configuration
@@ -559,7 +631,7 @@ static void MX_SDMMC1_SD_Init(void)
   hsd1.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_DISABLE;
   hsd1.Init.BusWide = SDMMC_BUS_WIDE_4B;
   hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_ENABLE;
-  hsd1.Init.ClockDiv = 0;
+  hsd1.Init.ClockDiv = 8;
   if (HAL_SD_Init(&hsd1) != HAL_OK)
   {
     Error_Handler();
@@ -697,14 +769,12 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOG_CLK_ENABLE();
-
-  /* USER CODE BEGIN MX_GPIO_Init_2 */
   __HAL_RCC_GPIOJ_CLK_ENABLE();
+
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOJ, GPIO_PIN_7, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : PG13 */
+  /*Configure GPIO pin : PJ7 */
   GPIO_InitStruct.Pin = GPIO_PIN_7;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
