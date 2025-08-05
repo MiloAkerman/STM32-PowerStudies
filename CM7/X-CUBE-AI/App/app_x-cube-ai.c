@@ -64,7 +64,7 @@
 /* USER CODE BEGIN includes */
 #define MEL_BANDS 64
 #define FFT_SIZE 512
-#define HOP_LENGTH 62
+#define HOP_LENGTH 256
 #define MAX_FRAMES 258
 /* USER CODE END includes */
 
@@ -212,13 +212,13 @@ int acquire_and_process_data(ai_i8 *data[], uint16_t *pcm_buffer, uint32_t pcm_s
     // normalize to [0, 1]
     normalize_spectrogram(mel_spec, MEL_BANDS, n_frames);
 
-	for (int i = 0; i < MEL_BANDS; ++i) {
-		for (int j = 0; j < MAX_FRAMES; ++j) {
-			printf("%.6f", mel_spec[i * MAX_FRAMES + j]);
-			if (j < MAX_FRAMES - 1) printf(",");
-		}
-		printf("\r\n");
-	}
+//	for (int i = 0; i < MEL_BANDS; ++i) {
+//		for (int j = 0; j < n_frames; ++j) {
+//			printf("%.6f", mel_spec[i * n_frames + j]);
+//			if (j < n_frames - 1) printf(",");
+//		}
+//		printf("\r\n");
+//	}
 
 
     float *dst = (float *)data[0];
