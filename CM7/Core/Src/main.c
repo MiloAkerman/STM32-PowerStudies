@@ -42,8 +42,8 @@ typedef enum {
 #define AUDIO_FREQUENCY       16000U
 #define AUDIO_CHANNEL_NUMBER  1U
 #define AUDIO_BUFFER_SIZE     1024U
-#define INFERENCE_BUFFER_SIZE 32768U //+ 25600U // ~3.5 sec of audio (2^16 + 128 * 200; 2^17 overloads .bss
-											  // sec. per exp. of 2: 2^(x-10)/31.2 for n>=10). Add in multiples of 128
+#define INFERENCE_BUFFER_SIZE 65536U //+ 25600U // ~4 sec of audio
+											 // sec. per exp. of 2: 2^(x-10)/31.2 for n>=10). Add in multiples of 128
 #define AUDIO_PCM_CHUNK_SIZE  16U
 #define BITS_PER_SAMPLE		  16U
 
@@ -132,7 +132,7 @@ void process_pcm_block(uint16_t *pcm_chunk);
 static void dcache_invalidate(void *addr, uint32_t size);
 static void dcache_clean(void *addr, uint32_t size);
 static void sd_init(void);
-static void sd_writepcm(uint16_t* pcm_buf, uint16_t pcm_size);
+static void sd_writepcm(uint16_t* pcm_buf, uint32_t pcm_size);
 void create_wav_header(wav_header *header,
 	int sample_rate, int num_channels, int bit_depth, int data_size);
 /* USER CODE END PFP */
@@ -141,7 +141,7 @@ void create_wav_header(wav_header *header,
 /* USER CODE BEGIN 0 */
 
 /**
- * @brief  Re-implementation of printf() to operate with USART
+ * @brief  Re-implementation of printf() to operate with USART (DO NOT REMOVE OR WILL NOT PRINT)
  */
 int _write(int file, char *ptr, int len) {
     HAL_UART_Transmit(&huart1, (uint8_t *)ptr, len, HAL_MAX_DELAY);
@@ -210,7 +210,7 @@ int main(void)
   BSP_OutputConfig.BitsPerSample = BITS_PER_SAMPLE;
   BSP_OutputConfig.ChannelsNbr = AUDIO_CHANNEL_NUMBER;
   BSP_OutputConfig.Device = WM8994_OUT_HEADPHONE;
-  BSP_OutputConfig.SampleRate = AUDIO_FREQUENCY;
+  BSP_OutputConfig.SampleRate = AUDIO_FREQUENCY / 2;
   BSP_OutputConfig.Volume = 60;
 
   memset(input_buffer, 0, AUDIO_BUFFER_SIZE * sizeof(uint16_t));
@@ -231,7 +231,7 @@ int main(void)
   printf("Starting Output SAI1/DMA...\r\n");
 
   int32_t output_init_response;
-  output_init_response = BSP_AUDIO_OUT_Play(1, (uint8_t *)inference_buffer, sizeof(inference_buffer));
+  output_init_response = BSP_AUDIO_OUT_Play(1, (uint8_t *)output_buffer, sizeof(output_buffer));
   if (output_init_response != BSP_ERROR_NONE) {
 	  printf("SAI1/DMA initialization failed! Error: %ld\r\n", output_init_response);
   } else {
@@ -280,9 +280,10 @@ int main(void)
 	  // Wait for half-buffer
 	  if ((bufferStatus & BUFFER_OFFSET_HALF) == BUFFER_OFFSET_HALF)
 	  {
+		  HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
 		  // Invalidate cache to avoid data mismatch issues
 		  dcache_invalidate(&input_buffer[0], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
-		  printf("Buffer half full! \r\n");
+		  //printf("Buffer half full! \r\n");
 		  // Process the first half of PDM buffer to PCM
 		  for (int i = 0; i < (AUDIO_BUFFER_SIZE/2) / PDM_WORDS_PER_CHUNK; i++)
 		  {
@@ -301,16 +302,15 @@ int main(void)
 			  output_buffPtr += AUDIO_PCM_CHUNK_SIZE;
 		  }
 		  bufferStatus &= ~BUFFER_OFFSET_HALF;
-
-		  //MX_X_CUBE_AI_Process(&output_buffer[])
 	  }
 
 	  // Wait for full-buffer
 	  if ((bufferStatus & BUFFER_OFFSET_FULL) == BUFFER_OFFSET_FULL)
 	  {
+		  HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
 		  // Invalidate cache to avoid data mismatch issues
 		  dcache_invalidate(&input_buffer[AUDIO_BUFFER_SIZE/2], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
-		  printf("Buffer full! \r\n");
+		  //printf("Buffer full! \r\n");
 
 		  // Process the second half the same way
 		  for (int i = 0; i < (AUDIO_BUFFER_SIZE/2) / PDM_WORDS_PER_CHUNK; i++)
@@ -335,17 +335,18 @@ int main(void)
 	  // Wrap pcm pointer if needed
 	  if (output_buffPtr >= AUDIO_BUFFER_SIZE)
 		  output_buffPtr = 0;
+
+	  // Run inference when inference buffer is full
 	  if (inference_buffPtr >= INFERENCE_BUFFER_SIZE) {
 		  writing = true;
 //		  for(int i = 0; i < INFERENCE_BUFFER_SIZE; i++) {
 //			  if(inference_buffer[i] == 0) printf("[%d]: %d \r\n", i, inference_buffer[i]);
 //		  }
 		  sd_writepcm(inference_buffer, INFERENCE_BUFFER_SIZE);
-		  //MX_X_CUBE_AI_Process(&inference_buffer[INFERENCE_BUFFER_SIZE/2], INFERENCE_BUFFER_SIZE);
+		  MX_X_CUBE_AI_Process(inference_buffer, INFERENCE_BUFFER_SIZE);
+		  HAL_Delay(2000);
 		  writing = false;
 		  inference_buffPtr = 0;
-		  HAL_Delay(2000);
-		  while(1) {}
 	  }
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
@@ -469,10 +470,11 @@ static void MX_SAI1_Init(void)
   hsai_BlockA1.Init.Synchro = SAI_ASYNCHRONOUS;
   hsai_BlockA1.Init.OutputDrive = SAI_OUTPUTDRIVE_DISABLE;
   hsai_BlockA1.Init.NoDivider = SAI_MASTERDIVIDER_DISABLE;
-  hsai_BlockA1.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_ENABLE;
+  hsai_BlockA1.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_DISABLE;
   hsai_BlockA1.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_EMPTY;
   hsai_BlockA1.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_16K;
-  //hsai_BlockA1.Init.Mckdiv = 6;
+//  hsai_BlockA1.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_MCKDIV;
+//  hsai_BlockA1.Init.Mckdiv = 6;
   hsai_BlockA1.Init.SynchroExt = SAI_SYNCEXT_DISABLE;
   hsai_BlockA1.Init.MonoStereoMode = SAI_MONOMODE;
   hsai_BlockA1.Init.CompandingMode = SAI_NOCOMPANDING;
@@ -541,10 +543,10 @@ static void MX_SAI4_Init(void)
   hsai_BlockA4.Init.NoDivider = SAI_MASTERDIVIDER_DISABLE;
   hsai_BlockA4.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_ENABLE;
   hsai_BlockA4.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_HF;
-  hsai_BlockA1.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_16K;
-  //hsai_BlockA4.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_MCKDIV;
-  //hsai_BlockA4.Init.Mckdiv = 3;
-  hsai_BlockA4.Init.MonoStereoMode = SAI_STEREOMODE;
+//  hsai_BlockA1.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_16K;
+  hsai_BlockA4.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_MCKDIV;
+  hsai_BlockA4.Init.Mckdiv = 6;
+  hsai_BlockA4.Init.MonoStereoMode = SAI_MONOMODE;
   hsai_BlockA4.Init.CompandingMode = SAI_NOCOMPANDING;
   hsai_BlockA4.Init.PdmInit.Activation = ENABLE;
   hsai_BlockA4.Init.PdmInit.MicPairsNbr = 1;
@@ -844,7 +846,7 @@ static void sd_init(void) {
   * @brief Write PCM buffer with header to .wav file
   * @retval None
   */
-static void sd_writepcm(uint16_t* pcm_buf, uint16_t pcm_size){
+static void sd_writepcm(uint16_t* pcm_buf, uint32_t pcm_size){
 	wav_header header;
 	FIL Fil;
 	FRESULT FR_Status;
@@ -862,15 +864,15 @@ static void sd_writepcm(uint16_t* pcm_buf, uint16_t pcm_size){
 	printf(".wav File created! Writing data...");
 
 	// wav_header header
-	create_wav_header(&header, 16000, 1, 16, pcm_size * sizeof(uint16_t) * 2);
+	create_wav_header(&header, 16000, 1, 16, pcm_size * sizeof(uint16_t));
 
 	// TODO: Clocks are too slow. Both playback and SD are only holding 1sec at full speed.
 	// Write Data To The Text File
 	//f_puts("Writing to SD Card Over SDMMC\n", &Fil);
-	printf("Passed size: %d\r\n", pcm_size * sizeof(uint16_t));
-	printf("Calculated size: %d (%d)\r\n", sizeof(*pcm_buf), sizeof(*pcm_buf)*sizeof(uint16_t));
+	printf("Passed size: %ld\r\n", pcm_size * sizeof(uint16_t));
+	printf("Calculated size: %d (%d)\r\n", sizeof(pcm_buf), sizeof(pcm_buf)*sizeof(uint16_t));
 	f_write(&Fil, &header, sizeof(wav_header), &WWC);
-	f_write(&Fil, (int8_t*) pcm_buf, pcm_size * sizeof(uint16_t) * 2, &WWC);
+	f_write(&Fil, (uint8_t*) pcm_buf, pcm_size * sizeof(uint16_t), &WWC);
 	printf("Data Bytes Written: %d\r\n", WWC);
 
 
