@@ -64,7 +64,7 @@
 /* USER CODE BEGIN includes */
 #define MEL_BANDS 64
 #define FFT_SIZE 512
-#define HOP_LENGTH 62
+#define HOP_LENGTH 128
 #define MAX_FRAMES 258
 /* USER CODE END includes */
 
@@ -95,7 +95,7 @@ NULL
 /* Activations buffers -------------------------------------------------------*/
 
 AI_ALIGNED(32)
-static uint8_t pool0[AI_TINYCNNBUOW_DATA_ACTIVATION_1_SIZE];
+static uint8_t pool0[AI_TINYCNNBUOW_DATA_ACTIVATION_1_SIZE] __attribute__((section(".DATA_RAM_D2")));
 
 ai_handle data_activations0[] = {pool0};
 
@@ -212,14 +212,13 @@ int acquire_and_process_data(ai_i8 *data[], uint16_t *pcm_buffer, uint32_t pcm_s
     // normalize to [0, 1]
     normalize_spectrogram(mel_spec, MEL_BANDS, n_frames);
 
-	for (int i = 0; i < MEL_BANDS; ++i) {
-		for (int j = 0; j < MAX_FRAMES; ++j) {
-			printf("%.6f", mel_spec[i * MAX_FRAMES + j]);
-			if (j < MAX_FRAMES - 1) printf(",");
-		}
-		printf("\r\n");
-	}
-
+//	for (int i = 0; i < MEL_BANDS; ++i) {
+//		for (int j = 0; j < n_frames; ++j) {
+//			printf("%.6f", mel_spec[i * n_frames + j]);
+//			if (j < n_frames - 1) printf(",");
+//		}
+//		printf("\r\n");
+//	}
 
     float *dst = (float *)data[0];
 
@@ -255,16 +254,16 @@ int post_process(ai_i8* data[])
             max_value = predictions[i];
             max_index = i;
         }
-        int predict = predictions[i] * 100;
-        int whole_part = predict / 100;
-        if (predict < 0) {
-          predict -= 2 * predict; // convert to positive
-        }
+//        int predict = predictions[i] * 100;
+//        int whole_part = predict / 100;
+//        if (predict < 0) {
+//          predict -= 2 * predict; // convert to positive
+//        }
 
-      printf("Class: %s, Score: %d.%d\n\r", class_names[i], whole_part, predict%100);
+      printf("Class: %s, Score: %0.1f\n\r", class_names[i], predictions[i]);
+      printf("Predicted Class: %s\n\r", class_names[max_index]);
       //HAL_Delay(2000);
     }
-    printf("Predicted Class: %s\n\r", class_names[max_index]);
     //HAL_Delay(8000);
 
     return 0;

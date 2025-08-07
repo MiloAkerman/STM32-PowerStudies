@@ -42,8 +42,8 @@ typedef enum {
 #define AUDIO_FREQUENCY       16000U
 #define AUDIO_CHANNEL_NUMBER  1U
 #define AUDIO_BUFFER_SIZE     1024U
-#define INFERENCE_BUFFER_SIZE 32768U //+ 25600U // ~3.5 sec of audio (2^16 + 128 * 200; 2^17 overloads .bss
-											  // sec. per exp. of 2: 2^(x-10)/31.2 for n>=10). Add in multiples of 128
+#define INFERENCE_BUFFER_SIZE 65536U //+ 25600U // ~4 sec of audio
+											 // sec. per exp. of 2: 2^(x-10)/31.2 for n>=10). Add in multiples of 128
 #define AUDIO_PCM_CHUNK_SIZE  16U
 #define BITS_PER_SAMPLE		  16U
 
@@ -55,7 +55,7 @@ typedef enum {
 #define FIR_TAPS        64
 
 // Uncomment to enable headphone audio playback
-// #define AUDIO_PLAYBACK
+#define AUDIO_PLAYBACK
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -74,6 +74,7 @@ UART_HandleTypeDef huart1;
 MDMA_HandleTypeDef hmdma_mdma_channel0_sdmmc1_end_data_0;
 
 /* USER CODE BEGIN 0 */
+FATFS FatFs;
 
 // SAI SETUP for audio retrieval and output
 // input_buffer must be located in RAM_D3 since it is accessed by BDMA
@@ -105,6 +106,8 @@ const q15_t firCoeffs[FIR_TAPS] = {
 static q15_t firState[FIR_TAPS + AUDIO_PCM_CHUNK_SIZE - 1];
 static arm_fir_instance_q15 S;
 
+uint32_t sample_n = 0;
+bool writing = false;
 /* USER CODE END 0 */
 /* USER CODE BEGIN PV */
 
@@ -128,16 +131,17 @@ void fir_init(void);
 void process_pcm_block(uint16_t *pcm_chunk);
 static void dcache_invalidate(void *addr, uint32_t size);
 static void dcache_clean(void *addr, uint32_t size);
-static void SD_Card_Power_Test(void);
+static void sd_init(void);
+static void sd_writepcm(uint16_t* pcm_buf, uint32_t pcm_size);
 void create_wav_header(wav_header *header,
-		int sample_rate, int num_channels, int bit_depth, int data_size);
+	int sample_rate, int num_channels, int bit_depth, int data_size);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
 /**
- * @brief  Re-implementation of printf() to operate with USART
+ * @brief  Re-implementation of printf() to operate with USART (DO NOT REMOVE OR WILL NOT PRINT)
  */
 int _write(int file, char *ptr, int len) {
     HAL_UART_Transmit(&huart1, (uint8_t *)ptr, len, HAL_MAX_DELAY);
@@ -206,7 +210,7 @@ int main(void)
   BSP_OutputConfig.BitsPerSample = BITS_PER_SAMPLE;
   BSP_OutputConfig.ChannelsNbr = AUDIO_CHANNEL_NUMBER;
   BSP_OutputConfig.Device = WM8994_OUT_HEADPHONE;
-  BSP_OutputConfig.SampleRate = AUDIO_FREQUENCY;
+  BSP_OutputConfig.SampleRate = AUDIO_FREQUENCY / 2;
   BSP_OutputConfig.Volume = 60;
 
   memset(input_buffer, 0, AUDIO_BUFFER_SIZE * sizeof(uint16_t));
@@ -239,8 +243,8 @@ int main(void)
   fir_init();
   // Initialize PDM2PCM filter
   BSP_AUDIO_IN_PDMToPCM_Init(1, AUDIO_FREQUENCY, AUDIO_CHANNEL_NUMBER, AUDIO_CHANNEL_NUMBER);
-
-  SD_Card_Power_Test();
+  // Initialize fs write and mount SD card
+  sd_init();
   
   // TODO: Remove power testing code when done
   //  Testing the power consumption in sleep mode
@@ -276,9 +280,10 @@ int main(void)
 	  // Wait for half-buffer
 	  if ((bufferStatus & BUFFER_OFFSET_HALF) == BUFFER_OFFSET_HALF)
 	  {
+		  HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
 		  // Invalidate cache to avoid data mismatch issues
 		  dcache_invalidate(&input_buffer[0], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
-		  printf("Buffer half full! \r\n");
+		  //printf("Buffer half full! \r\n");
 		  // Process the first half of PDM buffer to PCM
 		  for (int i = 0; i < (AUDIO_BUFFER_SIZE/2) / PDM_WORDS_PER_CHUNK; i++)
 		  {
@@ -287,23 +292,25 @@ int main(void)
 			  BSP_AUDIO_IN_PDMToPCM(1, pdm_chunk, pcm_out); // Apply PDM2PCM filter
 			  process_pcm_block(pcm_out); // Denoise PCM output with FIR filter
 			  dcache_clean(pcm_out, AUDIO_PCM_CHUNK_SIZE * sizeof(int16_t)); // Clean cache to avoid data mismatch issues
-			  for (int j = 0; j < AUDIO_PCM_CHUNK_SIZE; j++) {
-				  inference_buffer[inference_buffPtr + j] = output_buffer[output_buffPtr + j];
+			  if(!writing) {
+				  for (int j = 0; j < AUDIO_PCM_CHUNK_SIZE; j++) {
+					  inference_buffer[inference_buffPtr + j] = output_buffer[output_buffPtr + j];
+				  }
+				  inference_buffPtr += AUDIO_PCM_CHUNK_SIZE;
 			  }
-			  inference_buffPtr += AUDIO_PCM_CHUNK_SIZE;
+
 			  output_buffPtr += AUDIO_PCM_CHUNK_SIZE;
 		  }
 		  bufferStatus &= ~BUFFER_OFFSET_HALF;
-
-		  //MX_X_CUBE_AI_Process(&output_buffer[])
 	  }
 
 	  // Wait for full-buffer
 	  if ((bufferStatus & BUFFER_OFFSET_FULL) == BUFFER_OFFSET_FULL)
 	  {
+		  HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
 		  // Invalidate cache to avoid data mismatch issues
 		  dcache_invalidate(&input_buffer[AUDIO_BUFFER_SIZE/2], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
-		  printf("Buffer full! \r\n");
+		  //printf("Buffer full! \r\n");
 
 		  // Process the second half the same way
 		  for (int i = 0; i < (AUDIO_BUFFER_SIZE/2) / PDM_WORDS_PER_CHUNK; i++)
@@ -313,10 +320,13 @@ int main(void)
 			  BSP_AUDIO_IN_PDMToPCM(1, pdm_chunk, pcm_out);
 			  process_pcm_block(pcm_out);
 			  dcache_clean(pcm_out, AUDIO_PCM_CHUNK_SIZE * sizeof(int16_t));
-			  for (int j = 0; j < AUDIO_PCM_CHUNK_SIZE; j++) {
-				  inference_buffer[inference_buffPtr + j] = output_buffer[output_buffPtr + j];
+			  if(!writing) {
+				  for (int j = 0; j < AUDIO_PCM_CHUNK_SIZE; j++) {
+					  inference_buffer[inference_buffPtr + j] = output_buffer[output_buffPtr + j];
+				  }
+				  inference_buffPtr += AUDIO_PCM_CHUNK_SIZE;
 			  }
-			  inference_buffPtr += AUDIO_PCM_CHUNK_SIZE;
+
 			  output_buffPtr += AUDIO_PCM_CHUNK_SIZE;
 		  }
 		  bufferStatus &= ~BUFFER_OFFSET_FULL;
@@ -325,10 +335,18 @@ int main(void)
 	  // Wrap pcm pointer if needed
 	  if (output_buffPtr >= AUDIO_BUFFER_SIZE)
 		  output_buffPtr = 0;
+
+	  // Run inference when inference buffer is full
 	  if (inference_buffPtr >= INFERENCE_BUFFER_SIZE) {
-		  MX_X_CUBE_AI_Process(&inference_buffer[INFERENCE_BUFFER_SIZE/2], INFERENCE_BUFFER_SIZE);
+		  writing = true;
+//		  for(int i = 0; i < INFERENCE_BUFFER_SIZE; i++) {
+//			  if(inference_buffer[i] == 0) printf("[%d]: %d \r\n", i, inference_buffer[i]);
+//		  }
+		  sd_writepcm(inference_buffer, INFERENCE_BUFFER_SIZE);
+		  MX_X_CUBE_AI_Process(inference_buffer, INFERENCE_BUFFER_SIZE);
+		  HAL_Delay(2000);
+		  writing = false;
 		  inference_buffPtr = 0;
-		  while(1) {}
 	  }
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
@@ -337,83 +355,6 @@ int main(void)
 }
 
 /* USER CODE BEGIN 4 */
-
-/**
-  * @brief Create a WAV header
-  * @param header Pointer to the wav_header structure
-  * @param sample_rate Sample rate in Hz
-  * @param num_channels Number of audio channels (1 for mono, 2 for stereo)
-  * @param bit_depth Bit depth (e.g., 16 for PCM)
-  * @param data_size Size of the audio data in bytes
-  */
-void create_wav_header(wav_header *header, int sample_rate, int num_channels, int bit_depth, int data_size) {
-	// RIFF Header
-	memcpy(header->riff_header, "RIFF", 4);
-	header->wav_size = data_size + 36; // Total file size - 8 bytes for RIFF header
-	memcpy(header->wave_header, "WAVE", 4);
-
-	// Format Header
-	memcpy(header->fmt_header, "fmt ", 4); // Note the trailing space
-	header->fmt_chunk_size = 16; // For PCM
-	header->audio_format = 1; // PCM
-	header->num_channels = num_channels;
-	header->sample_rate = sample_rate;
-	header->byte_rate = sample_rate * num_channels * (bit_depth / 8);
-	header->sample_alignment = num_channels * (bit_depth / 8);
-	header->bit_depth = bit_depth;
-
-	// Data Header
-	memcpy(header->data_header, "data", 4);
-	header->data_bytes = data_size; // Number of bytes in data
-}
-
-/**
-  * @brief SD Card Power Test
-  * @retval None
-  */
-static void SD_Card_Power_Test(void){
-	FATFS FatFs;
-	FIL Fil;
-	FRESULT FR_Status;
-	UINT WWC;
-
-	// Mount the SD card
-	FR_Status = f_mount(&FatFs, SDPath, 1);
-	if (FR_Status != FR_OK){
-		printf("Error! While Mounting SD Card, Error Code: (%i)\r\n", FR_Status);
-	}
-	printf("SD Card Mounted Successfully! \r\n\n");
-
-	HAL_Delay(1000);
-	// Toggle pin when starting to write
-	HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
-	// Open a file for writing and write to it
-	FR_Status = f_open(&Fil, "BuowSample.wav", FA_WRITE | FA_READ | FA_CREATE_ALWAYS);
-	if(FR_Status != FR_OK)
-	{
-	  printf("Error! While Creating/Opening A New Text File, Error Code: (%i)\r\n", FR_Status);
-	  return;
-	}
-
-	//create wav header for audio data
-	printf("buow_pcm_size: %d\r\n", buow_pcm_size);
-	//wav_header header;
-	//create_wav_header(&header, 16000, 1, 16, buow_pcm_size);
-
-	// Write Data To The Text File
-	//f_puts("Writing to SD Card Over SDMMC\n", &Fil);
-	//f_write(&Fil, &header, sizeof(wav_header), &WWC);
-	//printf("Header Bytes Written: %d\r\n", WWC);
-	f_write(&Fil, buow_pcm_buffer, buow_pcm_size, &WWC);
-	printf("Data Bytes Written: %d\r\n", WWC);
-
-
-	// Close The File
-	f_close(&Fil);
-
-	// Toggle pin when done writing
-	HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
-}
 
 /* USER CODE END 4 */
 
@@ -529,10 +470,11 @@ static void MX_SAI1_Init(void)
   hsai_BlockA1.Init.Synchro = SAI_ASYNCHRONOUS;
   hsai_BlockA1.Init.OutputDrive = SAI_OUTPUTDRIVE_DISABLE;
   hsai_BlockA1.Init.NoDivider = SAI_MASTERDIVIDER_DISABLE;
-  hsai_BlockA1.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_ENABLE;
+  hsai_BlockA1.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_DISABLE;
   hsai_BlockA1.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_EMPTY;
   hsai_BlockA1.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_16K;
-  //hsai_BlockA1.Init.Mckdiv = 6;
+//  hsai_BlockA1.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_MCKDIV;
+//  hsai_BlockA1.Init.Mckdiv = 6;
   hsai_BlockA1.Init.SynchroExt = SAI_SYNCEXT_DISABLE;
   hsai_BlockA1.Init.MonoStereoMode = SAI_MONOMODE;
   hsai_BlockA1.Init.CompandingMode = SAI_NOCOMPANDING;
@@ -601,9 +543,10 @@ static void MX_SAI4_Init(void)
   hsai_BlockA4.Init.NoDivider = SAI_MASTERDIVIDER_DISABLE;
   hsai_BlockA4.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_ENABLE;
   hsai_BlockA4.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_HF;
+//  hsai_BlockA1.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_16K;
   hsai_BlockA4.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_MCKDIV;
   hsai_BlockA4.Init.Mckdiv = 6;
-  hsai_BlockA4.Init.MonoStereoMode = SAI_STEREOMODE;
+  hsai_BlockA4.Init.MonoStereoMode = SAI_MONOMODE;
   hsai_BlockA4.Init.CompandingMode = SAI_NOCOMPANDING;
   hsai_BlockA4.Init.PdmInit.Activation = ENABLE;
   hsai_BlockA4.Init.PdmInit.MicPairsNbr = 1;
@@ -642,7 +585,7 @@ static void MX_SDMMC1_SD_Init(void)
 
   /* USER CODE END SDMMC1_Init 1 */
   hsd1.Instance = SDMMC1;
-  hsd1.Init.ClockEdge = SDMMC_CLOCK_EDGE_RISING;
+  hsd1.Init.ClockEdge = SDMMC_CLOCK_EDGE_FALLING;
   hsd1.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_DISABLE;
   hsd1.Init.BusWide = SDMMC_BUS_WIDE_4B;
   hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_ENABLE;
@@ -853,6 +796,88 @@ static void dcache_clean(void *addr, uint32_t size) {
     uint32_t a = (uint32_t)addr & ~31U;
     uint32_t s = ((size + 31U) & ~31U);
     SCB_CleanDCache_by_Addr((uint32_t*)a, s);
+}
+
+/**
+  * @brief Create a WAV header
+  * @param header Pointer to the wav_header structure
+  * @param sample_rate Sample rate in Hz
+  * @param num_channels Number of audio channels (1 for mono, 2 for stereo)
+  * @param bit_depth Bit depth (e.g., 16 for PCM)
+  * @param data_size Size of the audio data in bytes
+  */
+void create_wav_header(wav_header *header, int sample_rate, int num_channels, int bit_depth, int data_size) {
+	// RIFF Header
+	memcpy(header->riff_header, "RIFF", 4);
+	header->wav_size = data_size + 36; // Total file size - 8 bytes for RIFF header
+	memcpy(header->wave_header, "WAVE", 4);
+
+	// Format Header
+	memcpy(header->fmt_header, "fmt ", 4); // Note the trailing space
+	header->fmt_chunk_size = 16; // For PCM
+	header->audio_format = 1; // PCM
+	header->num_channels = num_channels;
+	header->sample_rate = sample_rate;
+	header->byte_rate = sample_rate * num_channels * (bit_depth / 8);
+	header->sample_alignment = num_channels * (bit_depth / 8);
+	header->bit_depth = bit_depth;
+
+	// Data Header
+	memcpy(header->data_header, "data", 4);
+	header->data_bytes = data_size; // Number of bytes in data
+}
+
+/**
+ * @brief Mount SD card
+ * @retval None
+ */
+static void sd_init(void) {
+	FRESULT FR_Status;
+
+	// Mount the SD card
+	FR_Status = f_mount(&FatFs, SDPath, 1);
+	if (FR_Status != FR_OK){
+		printf("Error! While Mounting SD Card, Error Code: (%i)\r\n", FR_Status);
+	}
+	printf("SD Card Mounted Successfully! \r\n\n");
+}
+
+/**
+  * @brief Write PCM buffer with header to .wav file
+  * @retval None
+  */
+static void sd_writepcm(uint16_t* pcm_buf, uint32_t pcm_size){
+	wav_header header;
+	FIL Fil;
+	FRESULT FR_Status;
+	UINT WWC;
+	char file_name_buffer[20];
+
+	// Open a file for writing and write to it
+	snprintf(file_name_buffer, 20, "sample%ld.wav", sample_n++); // format file name. 20 is max characters
+	FR_Status = f_open(&Fil, file_name_buffer, FA_WRITE | FA_READ | FA_CREATE_ALWAYS);
+	if(FR_Status != FR_OK)
+	{
+	  printf("Error! While Creating/Opening A New .wav File, Error Code: (%i)\r\n", FR_Status);
+	  return;
+	}
+	printf(".wav File created! Writing data...");
+
+	// wav_header header
+	create_wav_header(&header, 16000, 1, 16, pcm_size * sizeof(uint16_t));
+
+	// TODO: Clocks are too slow. Both playback and SD are only holding 1sec at full speed.
+	// Write Data To The Text File
+	//f_puts("Writing to SD Card Over SDMMC\n", &Fil);
+	printf("Passed size: %ld\r\n", pcm_size * sizeof(uint16_t));
+	printf("Calculated size: %d (%d)\r\n", sizeof(pcm_buf), sizeof(pcm_buf)*sizeof(uint16_t));
+	f_write(&Fil, &header, sizeof(wav_header), &WWC);
+	f_write(&Fil, (uint8_t*) pcm_buf, pcm_size * sizeof(uint16_t), &WWC);
+	printf("Data Bytes Written: %d\r\n", WWC);
+
+
+	// Close The File
+	f_close(&Fil);
 }
 
 /**
