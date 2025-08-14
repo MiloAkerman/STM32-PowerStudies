@@ -31,7 +31,17 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "stm32h747i_discovery.h"
+#include "stm32h747i_discovery_bus.h"
+#include "stm32h747i_discovery_audio.h"
+#include "audio.h"
+#include "wm8994.h"
+#include "pdm2pcm_glo.h"
+#include "arm_math.h"
 
+#include "math.h"
+#include <stdio.h>
+#include <string.h> // Added for memset
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
