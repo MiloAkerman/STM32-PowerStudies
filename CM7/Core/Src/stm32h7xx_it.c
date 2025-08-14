@@ -56,10 +56,10 @@
 
 /* External variables --------------------------------------------------------*/
 extern MDMA_HandleTypeDef hmdma_mdma_channel0_sdmmc1_end_data_0;
+extern RTC_HandleTypeDef hrtc;
 extern DMA_HandleTypeDef hdma_sai1_a;
 extern DMA_HandleTypeDef hdma_sai4_a;
 extern SAI_HandleTypeDef hsai_BlockA4;
-extern SAI_HandleTypeDef hsai_BlockA1;
 extern SD_HandleTypeDef hsd1;
 /* USER CODE BEGIN EV */
 
@@ -202,6 +202,20 @@ void SysTick_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32h7xx.s).                    */
 /******************************************************************************/
+
+/**
+  * @brief This function handles RTC tamper and timestamp interrupts through EXTI line 18.
+  */
+void TAMP_STAMP_IRQHandler(void)
+{
+  /* USER CODE BEGIN TAMP_STAMP_IRQn 0 */
+
+  /* USER CODE END TAMP_STAMP_IRQn 0 */
+  HAL_RTCEx_TamperTimeStampIRQHandler(&hrtc);
+  /* USER CODE BEGIN TAMP_STAMP_IRQn 1 */
+
+  /* USER CODE END TAMP_STAMP_IRQn 1 */
+}
 
 /**
   * @brief This function handles SDMMC1 global interrupt.
