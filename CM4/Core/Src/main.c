@@ -66,6 +66,7 @@ typedef enum {
 
 // Uncomment to enable headphone audio playback
 #define AUDIO_PLAYBACK
+
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -95,7 +96,6 @@ static void MX_SAI4_Init(void);
 static void MX_SAI1_Init(void);
 #ifdef AUDIO_PLAYBACK
 static void MX_DMA_Init(void);
-static void MX_SAI1_Init(void);
 #endif
 /* USER CODE BEGIN PFP */
 /* USER CODE END PFP */
@@ -161,6 +161,15 @@ int main(void)
 #endif
 
   /* USER CODE BEGIN 2 */
+  // BDMA global and C2 enables
+  RCC->AHB4ENR  |= RCC_AHB4ENR_BDMAEN;
+  RCC->C2_AHB4ENR |= RCC_C2_AHB4ENR_BDMAEN;
+
+  // GPIO global and C2 enables (e.g., port B)
+  RCC->AHB4ENR  |= RCC_AHB4ENR_GPIOBEN;
+  RCC->C2_AHB4ENR |= RCC_C2_AHB4ENR_GPIOBEN;
+  __DSB();
+  __ISB();
 
   BSP_AUDIO_Init_t BSP_OutputConfig = {0};
   BSP_OutputConfig.BitsPerSample = BITS_PER_SAMPLE;
@@ -171,13 +180,13 @@ int main(void)
 
   memset(input_buffer, 0, AUDIO_BUFFER_SIZE * sizeof(uint16_t));
 
-  printf("Hi lollll!\r\n");
+  // TODO: Modify registers so SAI is clocked by the M4 not the M7
   BSP_AUDIO_IN_Init(1, &BSP_OutputConfig); // unused for input, used for PDM2PCM
 
   printf("Starting Input SAI4/BDMA...\r\n");
 
   HAL_StatusTypeDef input_init_response;
-  input_init_response = HAL_SAI_Receive_DMA(&hsai_BlockA4, (uint8_t *)input_buffer, AUDIO_BUFFER_SIZE);
+  input_init_response = BSP_AUDIO_IN_Record(1, (uint8_t *)input_buffer, AUDIO_BUFFER_SIZE);
   if (input_init_response != HAL_OK) {
 	  printf("SAI4/BDMA initialization failed! Error: %d\r\n", input_init_response);
   } else {
@@ -185,7 +194,6 @@ int main(void)
   }
 
 #ifdef AUDIO_PLAYBACK
-  printf("Other thing lol\r\n");
   BSP_AUDIO_OUT_Init(1, &BSP_OutputConfig);
   printf("Starting Output SAI1/DMA...\r\n");
 
@@ -238,7 +246,6 @@ int main(void)
 	  // Wait for full-buffer
 	  if ((bufferStatus & BUFFER_OFFSET_FULL) == BUFFER_OFFSET_FULL)
 	  {
-		  printf("Full Test\r\n");
 		  // Invalidate cache to avoid data mismatch issues
 		  //dcache_invalidate(&input_buffer[AUDIO_BUFFER_SIZE/2], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
 		  //printf("Buffer full! \r\n");
@@ -386,6 +393,7 @@ static void MX_SAI4_Init(void)
 {
 
   /* USER CODE BEGIN SAI4_Init 0 */
+	__HAL_RCC_SAI4_CLK_ENABLE();
   /* USER CODE END SAI4_Init 0 */
 
   /* USER CODE BEGIN SAI4_Init 1 */

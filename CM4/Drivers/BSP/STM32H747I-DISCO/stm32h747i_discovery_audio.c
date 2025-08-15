@@ -1933,7 +1933,7 @@ int32_t BSP_AUDIO_IN_Record(uint32_t Instance, uint8_t* pBuf, uint32_t NbrOfByte
 {
   int32_t ret= BSP_ERROR_NONE;
 
-  if(Instance > 0U)
+  if(Instance > 1U)
   {
     ret = BSP_ERROR_WRONG_PARAM;
   }
