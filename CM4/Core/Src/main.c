@@ -59,6 +59,11 @@ typedef enum {
 #define INFERENCE_BUFFER_SIZE 65536U //+ 25600U // ~4 sec of audio
 											 // sec. per exp. of 2: 2^(x-10)/31.2 for n>=10). Add in multiples of 128
 
+#define DECIMATION_FACTOR     64U
+#define PDM_WORDS_PER_CHUNK   (AUDIO_PCM_CHUNK_SIZE * DECIMATION_FACTOR / BITS_PER_SAMPLE)
+#define AUDIO_PCM_CHUNK_SIZE  16U
+#define BITS_PER_SAMPLE		  16U
+
 // Uncomment to enable headphone audio playback
 #define AUDIO_PLAYBACK
 /* USER CODE END PM */
@@ -70,6 +75,7 @@ SAI_HandleTypeDef hsai_BlockA4;
 DMA_HandleTypeDef hdma_sai4_a;
 SAI_HandleTypeDef hsai_BlockA1;
 DMA_HandleTypeDef hdma_sai1_a;
+UART_HandleTypeDef huart1;
 
 uint16_t input_buffer[AUDIO_BUFFER_SIZE] __attribute__((section(".DATA_RAM_D3")));
 uint16_t output_buffer[AUDIO_BUFFER_SIZE];
@@ -92,11 +98,17 @@ static void MX_DMA_Init(void);
 static void MX_SAI1_Init(void);
 #endif
 /* USER CODE BEGIN PFP */
-
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/**
+ * @brief  Re-implementation of printf() to operate with USART (DO NOT REMOVE OR WILL NOT PRINT)
+ */
+int _write(int file, char *ptr, int len) {
+    HAL_UART_Transmit(&huart1, (uint8_t *)ptr, len, HAL_MAX_DELAY);
+    return len;
+}
 /* USER CODE END 0 */
 
 /**
@@ -158,6 +170,8 @@ int main(void)
   BSP_OutputConfig.Volume = 60;
 
   memset(input_buffer, 0, AUDIO_BUFFER_SIZE * sizeof(uint16_t));
+
+  printf("Hi lollll!\r\n");
   BSP_AUDIO_IN_Init(1, &BSP_OutputConfig); // unused for input, used for PDM2PCM
 
   printf("Starting Input SAI4/BDMA...\r\n");
@@ -171,6 +185,7 @@ int main(void)
   }
 
 #ifdef AUDIO_PLAYBACK
+  printf("Other thing lol\r\n");
   BSP_AUDIO_OUT_Init(1, &BSP_OutputConfig);
   printf("Starting Output SAI1/DMA...\r\n");
 
@@ -195,11 +210,12 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+
 	  // Wait for half-buffer
 	  if ((bufferStatus & BUFFER_OFFSET_HALF) == BUFFER_OFFSET_HALF)
 	  {
 		  // Invalidate cache to avoid data mismatch issues
-		  dcache_invalidate(&input_buffer[0], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
+		  //dcache_invalidate(&input_buffer[0], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
 		  //printf("Buffer half full! \r\n");
 		  // Process the first half of PDM buffer to PCM
 		  for (int i = 0; i < (AUDIO_BUFFER_SIZE/2) / PDM_WORDS_PER_CHUNK; i++)
@@ -207,8 +223,8 @@ int main(void)
 			  uint16_t *pdm_chunk = &input_buffer[i * PDM_WORDS_PER_CHUNK];
 			  uint16_t  *pcm_out    = &output_buffer[output_buffPtr];
 			  BSP_AUDIO_IN_PDMToPCM(1, pdm_chunk, pcm_out); // Apply PDM2PCM filter
-			  process_pcm_block(pcm_out); // Denoise PCM output with FIR filter
-			  dcache_clean(pcm_out, AUDIO_PCM_CHUNK_SIZE * sizeof(int16_t)); // Clean cache to avoid data mismatch issues
+			  //process_pcm_block(pcm_out); // Denoise PCM output with FIR filter
+			  //dcache_clean(pcm_out, AUDIO_PCM_CHUNK_SIZE * sizeof(int16_t)); // Clean cache to avoid data mismatch issues
 			  for (int j = 0; j < AUDIO_PCM_CHUNK_SIZE; j++) {
 				  inference_buffer[inference_buffPtr + j] = output_buffer[output_buffPtr + j];
 			  }
@@ -222,8 +238,9 @@ int main(void)
 	  // Wait for full-buffer
 	  if ((bufferStatus & BUFFER_OFFSET_FULL) == BUFFER_OFFSET_FULL)
 	  {
+		  printf("Full Test\r\n");
 		  // Invalidate cache to avoid data mismatch issues
-		  dcache_invalidate(&input_buffer[AUDIO_BUFFER_SIZE/2], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
+		  //dcache_invalidate(&input_buffer[AUDIO_BUFFER_SIZE/2], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
 		  //printf("Buffer full! \r\n");
 
 		  // Process the second half the same way
@@ -232,8 +249,8 @@ int main(void)
 			  uint16_t *pdm_chunk = &input_buffer[AUDIO_BUFFER_SIZE/2 + i * PDM_WORDS_PER_CHUNK];
 			  uint16_t  *pcm_out    = &output_buffer[output_buffPtr];
 			  BSP_AUDIO_IN_PDMToPCM(1, pdm_chunk, pcm_out);
-			  process_pcm_block(pcm_out);
-			  dcache_clean(pcm_out, AUDIO_PCM_CHUNK_SIZE * sizeof(int16_t));
+			  //process_pcm_block(pcm_out);
+			  //dcache_clean(pcm_out, AUDIO_PCM_CHUNK_SIZE * sizeof(int16_t));
 			  for (int j = 0; j < AUDIO_PCM_CHUNK_SIZE; j++) {
 				  inference_buffer[inference_buffPtr + j] = output_buffer[output_buffPtr + j];
 			  }
@@ -250,7 +267,7 @@ int main(void)
 
 	  // Run inference when inference buffer is full
 	  if (inference_buffPtr >= INFERENCE_BUFFER_SIZE) {
-		  printf("Reached end of inference buffer on CM4");
+		  printf("Reached end of inference buffer on CM4\r\n");
 		  inference_buffPtr = 0;
 	  }
     /* USER CODE END WHILE */
@@ -476,29 +493,6 @@ static void MX_BDMA_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-/**
-  * @brief  Invalidate portion of DCache
-  * @param  addr : Address of memory location to be invalidated
-  * @param  size : Size of memory chunk to be invalidated
-  * @retval None
-  */
-static void dcache_invalidate(void *addr, uint32_t size) {
-    uint32_t a = (uint32_t)addr & ~31U;
-    uint32_t s = ((size + 31U) & ~31U);
-    SCB_InvalidateDCache_by_Addr((uint32_t*)a, s);
-}
-
-/**
-  * @brief  Clean portion of DCache
-  * @param  addr : Address of memory location to be cleaned
-  * @param  size : Size of memory chunk to be cleaned
-  * @retval None
-  */
-static void dcache_clean(void *addr, uint32_t size) {
-    uint32_t a = (uint32_t)addr & ~31U;
-    uint32_t s = ((size + 31U) & ~31U);
-    SCB_CleanDCache_by_Addr((uint32_t*)a, s);
-}
 
 /**
   * @brief  Rx Transfer completed callbacks.
@@ -508,6 +502,7 @@ static void dcache_clean(void *addr, uint32_t size) {
   */
 void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai)
 {
+	printf("Half Test\r\n");
 	bufferStatus |= BUFFER_OFFSET_FULL;
 }
 
@@ -519,6 +514,7 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai)
   */
 void HAL_SAI_RxHalfCpltCallback(SAI_HandleTypeDef *hsai)
 {
+	printf("Full Test\r\n");
 	bufferStatus |= BUFFER_OFFSET_HALF;
 }
 /* USER CODE END 4 */

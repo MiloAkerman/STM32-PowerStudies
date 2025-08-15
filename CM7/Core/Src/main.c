@@ -522,6 +522,30 @@ static void sd_init(void) {
 }
 
 /**
+  * @brief  Invalidate portion of DCache
+  * @param  addr : Address of memory location to be invalidated
+  * @param  size : Size of memory chunk to be invalidated
+  * @retval None
+  */
+static void dcache_invalidate(void *addr, uint32_t size) {
+    uint32_t a = (uint32_t)addr & ~31U;
+    uint32_t s = ((size + 31U) & ~31U);
+    SCB_InvalidateDCache_by_Addr((uint32_t*)a, s);
+}
+
+/**
+  * @brief  Clean portion of DCache
+  * @param  addr : Address of memory location to be cleaned
+  * @param  size : Size of memory chunk to be cleaned
+  * @retval None
+  */
+static void dcache_clean(void *addr, uint32_t size) {
+    uint32_t a = (uint32_t)addr & ~31U;
+    uint32_t s = ((size + 31U) & ~31U);
+    SCB_CleanDCache_by_Addr((uint32_t*)a, s);
+}
+
+/**
   * @brief Write PCM buffer with header to .wav file
   * @retval None
   */

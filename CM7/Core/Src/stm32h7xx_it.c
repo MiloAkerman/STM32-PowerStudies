@@ -41,7 +41,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-
+extern SD_HandleTypeDef hsd1;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
