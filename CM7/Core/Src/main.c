@@ -266,7 +266,9 @@ int main(void)
   __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
   HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN4);
   HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
+  printf("Entering standby mode...\r\n");
   HAL_PWREx_EnterSTANDBYMode(PWR_D1_DOMAIN);
+  printf("Standby mode failed to enter!\r\n");
 
   /* Initialize Rx buffer status */
   bufferStatus &= BUFFER_OFFSET_NONE;
@@ -567,23 +569,29 @@ static void MX_RTC_Init(void)
 
   /** Initialize RTC and set the Time and Date
   */
-  sTime.Hours = 0x0;
-  sTime.Minutes = 0x0;
-  sTime.Seconds = 0x0;
-  sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
-  sTime.StoreOperation = RTC_STOREOPERATION_RESET;
-  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sDate.WeekDay = RTC_WEEKDAY_TUESDAY;
-  sDate.Month = RTC_MONTH_AUGUST;
-  sDate.Date = 0x13;
-  sDate.Year = 0x25;
-  if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    const uint32_t random_num = 0x32F2;
+    if (HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR0) != random_num) {
+  	  sTime.Hours = 0x0;
+  	  sTime.Minutes = 0x0;
+  	  sTime.Seconds = 0x0;
+  	  sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+  	  sTime.StoreOperation = RTC_STOREOPERATION_RESET;
+  	  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK)
+  	  {
+  		Error_Handler();
+  	  }
+
+  	  sDate.WeekDay = RTC_WEEKDAY_TUESDAY;
+  	  sDate.Month = RTC_MONTH_AUGUST;
+  	  sDate.Date = 0x13;
+  	  sDate.Year = 0x25;
+  	  if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
+  	  {
+  		Error_Handler();
+  	  }
+
+  	  HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR0, random_num);
+    }
 
   /** Enable the TimeStamp
   */
