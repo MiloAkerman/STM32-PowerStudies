@@ -235,6 +235,8 @@ int main(void)
   }
 #endif
 
+
+
 //  // Initialize FIR filter
 //  fir_init();
 //  // Initialize PDM2PCM filter
@@ -260,7 +262,7 @@ int main(void)
 //  HAL_PWR_EnterSTANDBYMode();
 
   //Test the power consumption in standby mode
-  HAL_Delay(2000);
+  HAL_Delay(100);
   HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN4);
   __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
   __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
@@ -351,9 +353,11 @@ void RTC_TAMP_STAMP_IRQHandler(void) {
 
 void HAL_RTCEx_TimeStampEventCallback(RTC_HandleTypeDef *hrtc) {
     RTC_TimeTypeDef ts; RTC_DateTypeDef ds;
-    HAL_RTCEx_GetTimeStamp(hrtc, &ts, &ds, RTC_FORMAT_BIN); // time of the wake event
-    printf("Wakeup event at %02lu:%02lu:%02lu on %02lu/%02lu/%04lu\r\n",
+    HAL_RTC_GetTime(hrtc, &ts, RTC_FORMAT_BIN);
+    HAL_RTC_GetDate(hrtc, &ds, RTC_FORMAT_BIN);
+    printf("Wakeup event at %02i:%02i:%02i on %02i/%02i/%04i\r\n",
 		   ts.Hours, ts.Minutes, ts.Seconds, ds.Month, ds.Date, 2000 + ds.Year);
+
 }
 
 /**
@@ -576,16 +580,16 @@ static void MX_RTC_Init(void)
   	  sTime.Seconds = 0x0;
   	  sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
   	  sTime.StoreOperation = RTC_STOREOPERATION_RESET;
-  	  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK)
+  	  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN) != HAL_OK)
   	  {
   		Error_Handler();
   	  }
 
   	  sDate.WeekDay = RTC_WEEKDAY_TUESDAY;
   	  sDate.Month = RTC_MONTH_AUGUST;
-  	  sDate.Date = 0x13;
-  	  sDate.Year = 0x25;
-  	  if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
+  	  sDate.Date = 0x12;
+  	  sDate.Year = 0x19;
+  	  if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN) != HAL_OK)
   	  {
   		Error_Handler();
   	  }
