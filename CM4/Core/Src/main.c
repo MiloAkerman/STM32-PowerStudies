@@ -113,10 +113,10 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_BDMA_Init();
-  MX_MDMA_Init();
-  MX_DMA_Init();
+  //MX_MDMA_Init();
+  //MX_DMA_Init();
   /* USER CODE BEGIN 2 */
-
+  //HAL_PWREx_EnterSTOPMode(PWR_MAINREGULATOR_ON, PWR_STOPENTRY_WFI, PWR_D2_DOMAIN);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -124,7 +124,7 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-
+	__WFI();  // wait-for-interrupt, core halts execution
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */

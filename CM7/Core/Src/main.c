@@ -357,7 +357,6 @@ void HAL_RTCEx_TimeStampEventCallback(RTC_HandleTypeDef *hrtc) {
     HAL_RTC_GetDate(hrtc, &ds, RTC_FORMAT_BIN);
     printf("Wakeup event at %02i:%02i:%02i on %02i/%02i/%04i\r\n",
 		   ts.Hours, ts.Minutes, ts.Seconds, ds.Month, ds.Date, 2000 + ds.Year);
-
 }
 
 /**
