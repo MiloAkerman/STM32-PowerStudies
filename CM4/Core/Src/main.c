@@ -156,26 +156,17 @@ int main(void)
   MX_BDMA_Init();
   MX_SAI4_Init();
 #ifdef AUDIO_PLAYBACK
-  MX_SAI1_Init();
   MX_DMA_Init();
+  MX_SAI1_Init();
 #endif
 
   /* USER CODE BEGIN 2 */
-  // BDMA global and C2 enables
-  RCC->AHB4ENR  |= RCC_AHB4ENR_BDMAEN;
-  RCC->C2_AHB4ENR |= RCC_C2_AHB4ENR_BDMAEN;
-
-  // GPIO global and C2 enables (e.g., port B)
-  RCC->AHB4ENR  |= RCC_AHB4ENR_GPIOBEN;
-  RCC->C2_AHB4ENR |= RCC_C2_AHB4ENR_GPIOBEN;
-  __DSB();
-  __ISB();
 
   BSP_AUDIO_Init_t BSP_OutputConfig = {0};
   BSP_OutputConfig.BitsPerSample = BITS_PER_SAMPLE;
   BSP_OutputConfig.ChannelsNbr = AUDIO_CHANNEL_NUMBER;
   BSP_OutputConfig.Device = WM8994_OUT_HEADPHONE;
-  BSP_OutputConfig.SampleRate = AUDIO_FREQUENCY / 2;
+  BSP_OutputConfig.SampleRate = AUDIO_FREQUENCY;
   BSP_OutputConfig.Volume = 60;
 
   memset(input_buffer, 0, AUDIO_BUFFER_SIZE * sizeof(uint16_t));
@@ -218,7 +209,6 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-
 	  // Wait for half-buffer
 	  if ((bufferStatus & BUFFER_OFFSET_HALF) == BUFFER_OFFSET_HALF)
 	  {
@@ -236,8 +226,8 @@ int main(void)
 			  for (int j = 0; j < AUDIO_PCM_CHUNK_SIZE; j++) {
 				  inference_buffer[inference_buffPtr + j] = output_buffer[output_buffPtr + j];
 			  }
-			  inference_buffPtr += AUDIO_PCM_CHUNK_SIZE;
 
+			  inference_buffPtr += AUDIO_PCM_CHUNK_SIZE;
 			  output_buffPtr += AUDIO_PCM_CHUNK_SIZE;
 		  }
 		  bufferStatus &= ~BUFFER_OFFSET_HALF;
@@ -261,8 +251,8 @@ int main(void)
 			  for (int j = 0; j < AUDIO_PCM_CHUNK_SIZE; j++) {
 				  inference_buffer[inference_buffPtr + j] = output_buffer[output_buffPtr + j];
 			  }
-			  inference_buffPtr += AUDIO_PCM_CHUNK_SIZE;
 
+			  inference_buffPtr += AUDIO_PCM_CHUNK_SIZE;
 			  output_buffPtr += AUDIO_PCM_CHUNK_SIZE;
 		  }
 		  bufferStatus &= ~BUFFER_OFFSET_FULL;
@@ -510,7 +500,7 @@ static void MX_BDMA_Init(void)
   */
 void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai)
 {
-	printf("Half Test\r\n");
+	printf("Full Test\r\n");
 	bufferStatus |= BUFFER_OFFSET_FULL;
 }
 
@@ -522,7 +512,7 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai)
   */
 void HAL_SAI_RxHalfCpltCallback(SAI_HandleTypeDef *hsai)
 {
-	printf("Full Test\r\n");
+	printf("Half Test\r\n");
 	bufferStatus |= BUFFER_OFFSET_HALF;
 }
 /* USER CODE END 4 */

@@ -43,8 +43,9 @@ _Min_Stack_Size = 0x400; /* required amount of stack */
 /* Specify the memory areas */
 MEMORY
 {
-FLASH (rx)     : ORIGIN = 0x08100000, LENGTH = 1024K
-RAM (xrw)      : ORIGIN = 0x10000000, LENGTH = 288K
+	FLASH (rx)     : ORIGIN = 0x08100000, LENGTH = 1024K
+	RAM_D3 (xrw)   : ORIGIN = 0x38000000, LENGTH = 64K
+	RAM (xrw)      : ORIGIN = 0x10000000, LENGTH = 288K
 }
 
 /* Define output sections */
@@ -160,6 +161,10 @@ SECTIONS
     . = . + _Min_Stack_Size;
     . = ALIGN(8);
   } >RAM
+  
+  .DATA_RAM_D3 :
+  {
+  } >RAM_D3
 
 
 
