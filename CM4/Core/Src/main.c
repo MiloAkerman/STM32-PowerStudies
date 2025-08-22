@@ -65,7 +65,7 @@ typedef enum {
 #define BITS_PER_SAMPLE		  16U
 
 // Uncomment to enable headphone audio playback
-#define AUDIO_PLAYBACK
+//#define AUDIO_PLAYBACK
 
 /* USER CODE END PM */
 
@@ -90,12 +90,11 @@ volatile BUFFER_StateTypeDef bufferStatus = BUFFER_OFFSET_NONE;
 
 /* Private function prototypes -----------------------------------------------*/
 static void MX_BDMA_Init(void);
-static void MX_DMA_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_SAI4_Init(void);
-static void MX_SAI1_Init(void);
 #ifdef AUDIO_PLAYBACK
 static void MX_DMA_Init(void);
+static void MX_SAI1_Init(void);
 #endif
 /* USER CODE BEGIN PFP */
 /* USER CODE END PFP */
@@ -171,7 +170,6 @@ int main(void)
 
   memset(input_buffer, 0, AUDIO_BUFFER_SIZE * sizeof(uint16_t));
 
-  // TODO: Modify registers so SAI is clocked by the M4 not the M7
   BSP_AUDIO_IN_Init(1, &BSP_OutputConfig); // unused for input, used for PDM2PCM
 
   printf("Starting Input SAI4/BDMA...\r\n");
@@ -210,7 +208,7 @@ int main(void)
   while (1)
   {
 	  // Wait for half-buffer
-	  if ((bufferStatus & BUFFER_OFFSET_HALF) == BUFFER_OFFSET_HALF)
+	  if (0)
 	  {
 		  // Invalidate cache to avoid data mismatch issues
 		  //dcache_invalidate(&input_buffer[0], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
@@ -234,7 +232,7 @@ int main(void)
 	  }
 
 	  // Wait for full-buffer
-	  if ((bufferStatus & BUFFER_OFFSET_FULL) == BUFFER_OFFSET_FULL)
+	  if (0)
 	  {
 		  // Invalidate cache to avoid data mismatch issues
 		  //dcache_invalidate(&input_buffer[AUDIO_BUFFER_SIZE/2], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
@@ -500,7 +498,7 @@ static void MX_BDMA_Init(void)
   */
 void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai)
 {
-	printf("Full Test\r\n");
+//	printf("Full Test\r\n");
 	bufferStatus |= BUFFER_OFFSET_FULL;
 }
 
@@ -512,7 +510,7 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai)
   */
 void HAL_SAI_RxHalfCpltCallback(SAI_HandleTypeDef *hsai)
 {
-	printf("Half Test\r\n");
+//	printf("Half Test\r\n");
 	bufferStatus |= BUFFER_OFFSET_HALF;
 }
 /* USER CODE END 4 */
