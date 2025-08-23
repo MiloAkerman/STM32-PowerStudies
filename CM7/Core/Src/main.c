@@ -24,6 +24,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "buow_sample_pcm.h"
+#include "rylr896.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -64,16 +65,78 @@ typedef enum {
 
 /* Private variables ---------------------------------------------------------*/
 
-// Peripheral handlers
-SAI_HandleTypeDef hsai_BlockA4;
-DMA_HandleTypeDef hdma_sai4_a;
 SAI_HandleTypeDef hsai_BlockA1;
+SAI_HandleTypeDef hsai_BlockA4;
 DMA_HandleTypeDef hdma_sai1_a;
-SD_HandleTypeDef hsd1;
-UART_HandleTypeDef huart1;
-MDMA_HandleTypeDef hmdma_mdma_channel0_sdmmc1_end_data_0;
+DMA_HandleTypeDef hdma_sai4_a;
 
+SD_HandleTypeDef hsd1;
+
+UART_HandleTypeDef huart4;
+UART_HandleTypeDef huart8;
+UART_HandleTypeDef huart1;
+
+MDMA_HandleTypeDef hmdma_mdma_channel0_sdmmc1_end_data_0;
+/* USER CODE BEGIN PV */
+
+/* USER CODE END PV */
+
+/* Private function prototypes -----------------------------------------------*/
+void SystemClock_Config(void);
+void PeriphCommonClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_BDMA_Init(void);
+static void MX_MDMA_Init(void);
+static void MX_DMA_Init(void);
+static void MX_USART1_UART_Init(void);
+static void MX_SAI4_Init(void);
+static void MX_SDMMC1_SD_Init(void);
+static void MX_SAI1_Init(void);
+static void MX_UART8_Init(void);
+static void MX_UART4_Init(void);
+/* USER CODE BEGIN PFP */
+void fir_init(void);
+void process_pcm_block(uint16_t *pcm_chunk);
+static void dcache_invalidate(void *addr, uint32_t size);
+static void dcache_clean(void *addr, uint32_t size);
+static void SD_Card_Power_Test(void);
+void create_wav_header(wav_header *header,
+		int sample_rate, int num_channels, int bit_depth, int data_size);
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+uint8_t reception_complete = 0;
+
+uint8_t TX_String[] = "hello";
+uint8_t RX_String[20];
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	reception_complete = 1;
+
+}
+
+void check_alpha(void)
+{
+	if(strcmp((char*)RX_String, (char*)TX_String)==0)
+	{
+		printf("Match!\r\n");
+	}
+	else
+	{
+		printf("No Match!\r\n");
+	}
+}
+
+/**
+ * @brief  Re-implementation of printf() to operate with USART (DO NOT REMOVE OR WILL NOT PRINT)
+ */
+int _write(int file, char *ptr, int len) {
+    HAL_UART_Transmit(&huart1, (uint8_t *)ptr, len, HAL_MAX_DELAY);
+    return len;
+}
 
 // SAI SETUP for audio retrieval and output
 // input_buffer must be located in RAM_D3 since it is accessed by BDMA
@@ -106,43 +169,6 @@ static q15_t firState[FIR_TAPS + AUDIO_PCM_CHUNK_SIZE - 1];
 static arm_fir_instance_q15 S;
 
 /* USER CODE END 0 */
-/* USER CODE BEGIN PV */
-
-/* USER CODE END PV */
-
-/* Private function prototypes -----------------------------------------------*/
-void SystemClock_Config(void);
-void PeriphCommonClock_Config(void);
-static void MX_GPIO_Init(void);
-static void MX_BDMA_Init(void);
-static void MX_MDMA_Init(void);
-static void MX_USART1_UART_Init(void);
-static void MX_SAI4_Init(void);
-static void MX_SDMMC1_SD_Init(void);
-#ifdef AUDIO_PLAYBACK
-static void MX_DMA_Init(void);
-static void MX_SAI1_Init(void);
-#endif
-/* USER CODE BEGIN PFP */
-void fir_init(void);
-void process_pcm_block(uint16_t *pcm_chunk);
-static void dcache_invalidate(void *addr, uint32_t size);
-static void dcache_clean(void *addr, uint32_t size);
-static void SD_Card_Power_Test(void);
-void create_wav_header(wav_header *header,
-		int sample_rate, int num_channels, int bit_depth, int data_size);
-/* USER CODE END PFP */
-
-/* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
-
-/**
- * @brief  Re-implementation of printf() to operate with USART
- */
-int _write(int file, char *ptr, int len) {
-    HAL_UART_Transmit(&huart1, (uint8_t *)ptr, len, HAL_MAX_DELAY);
-    return len;
-}
 
 /**
   * @brief  The application entry point.
@@ -191,14 +217,14 @@ int main(void)
   MX_GPIO_Init();
   MX_BDMA_Init();
   MX_MDMA_Init();
+  MX_DMA_Init();
   MX_USART1_UART_Init();
   MX_SAI4_Init();
   MX_SDMMC1_SD_Init();
   MX_FATFS_Init();
-#ifdef AUDIO_PLAYBACK
   MX_SAI1_Init();
-  MX_DMA_Init();
-#endif
+  MX_UART8_Init();
+  MX_UART4_Init();
   MX_X_CUBE_AI_Init();
   /* USER CODE BEGIN 2 */
 
@@ -240,7 +266,7 @@ int main(void)
   // Initialize PDM2PCM filter
   BSP_AUDIO_IN_PDMToPCM_Init(1, AUDIO_FREQUENCY, AUDIO_CHANNEL_NUMBER, AUDIO_CHANNEL_NUMBER);
 
-  SD_Card_Power_Test();
+//  SD_Card_Power_Test();
   
   // TODO: Remove power testing code when done
   //  Testing the power consumption in sleep mode
@@ -266,156 +292,148 @@ int main(void)
 
   /* Initialize Rx buffer status */
   bufferStatus &= BUFFER_OFFSET_NONE;
+  uint8_t rxBuffer[20] = {0};
+
+  //Enable pin to toggle the rylr896 reset pin
+  printf("Enabling RYLR896...\r\n");
+//  HAL_GPIO_WritePin(GPIOJ, GPIO_PIN_7, GPIO_PIN_SET);
+//  HAL_Delay(100);
+
+  //Test for a response command from the rylr896 module
+  reception_complete = 0;
+  HAL_UART_Receive_IT(&huart8, rxBuffer, 5);
+  Rylr896_Status_t ret = Rylr896Test();
+  if(ret != Rylr896_OK) {
+	  printf("RYLR896 module is not responding! Error code: %d\r\n", ret);
+	  Error_Handler();
+  }
+  /* wait for reception to be completed */
+  while (!reception_complete) {}
+  printf("Module Response: %s\r\n", (char*) rxBuffer);
+
+  //set the address of the rylr896 module
+  reception_complete = 0;
+  HAL_UART_Receive_IT(&huart8, rxBuffer, 5);
+  ret = Rylr896SetAddress("2");
+  if(ret != Rylr896_OK) {
+  	  printf("RYLR896 module is not responding! Error code: %d\r\n", ret);
+  	  Error_Handler();
+    }
+  /* wait for reception to be completed */
+  while (!reception_complete) {}
+  printf("Module Response: %s\r\n", rxBuffer);
+
+  reception_complete = 0;
+  HAL_UART_Receive_IT(&huart8, rxBuffer, 5);
+  ret = Rylr896setNetworkID("5");
+  if(ret != Rylr896_OK) {
+	  printf("RYLR896 module is not responding! Error code: %d\r\n", ret);
+	  Error_Handler();
+  }
+  while (!reception_complete) {}
+  printf("Module Response: %s\r\n", rxBuffer);
+
+  reception_complete = 0;
+  HAL_UART_Receive_IT(&huart8, rxBuffer, 5);
+  ret = Rylr896SetParameter("10,7,1,7");
+  if(ret != Rylr896_OK) {
+	  printf("RYLR896 module is not responding! Error code: %d\r\n", ret);
+	  Error_Handler();
+  }
+  while (!reception_complete) {}
+  printf("Module Response: %s\r\n", rxBuffer);
+
+//  reception_complete = 0;
+//  HAL_UART_Receive_IT(&huart8, rxBuffer, 5);
+//  ret = Rylr896Send("3", "5", "Hello");
+//  if(ret != Rylr896_OK) {
+//	  printf("RYLR896 module is not responding! Error code: %d\r\n", ret);
+//	  Error_Handler();
+//  }
+//  while (!reception_complete) {}
+//  printf("Module Response: %s\r\n", rxBuffer);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
+//  reception_complete = 0;
+//  HAL_UART_Receive_IT(&huart8, RX_String, sizeof(TX_String));
+//  HAL_UART_Transmit(&huart8, TX_String, sizeof(TX_String), 10);
+//
+//  /* wait for reception to be completed */
+//  while (!reception_complete) {}
+//  printf("Received string: %s\r\n", RX_String);
+//
+//  /* at this step, reception is completed, compare Tx and Rx strings */
+//  check_alpha();
+
   while (1)
   {
 
-	  // Wait for half-buffer
-	  if ((bufferStatus & BUFFER_OFFSET_HALF) == BUFFER_OFFSET_HALF)
-	  {
-		  // Invalidate cache to avoid data mismatch issues
-		  dcache_invalidate(&input_buffer[0], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
-		  printf("Buffer half full! \r\n");
-		  // Process the first half of PDM buffer to PCM
-		  for (int i = 0; i < (AUDIO_BUFFER_SIZE/2) / PDM_WORDS_PER_CHUNK; i++)
-		  {
-			  uint16_t *pdm_chunk = &input_buffer[i * PDM_WORDS_PER_CHUNK];
-			  uint16_t  *pcm_out    = &output_buffer[output_buffPtr];
-			  BSP_AUDIO_IN_PDMToPCM(1, pdm_chunk, pcm_out); // Apply PDM2PCM filter
-			  process_pcm_block(pcm_out); // Denoise PCM output with FIR filter
-			  dcache_clean(pcm_out, AUDIO_PCM_CHUNK_SIZE * sizeof(int16_t)); // Clean cache to avoid data mismatch issues
-			  for (int j = 0; j < AUDIO_PCM_CHUNK_SIZE; j++) {
-				  inference_buffer[inference_buffPtr + j] = output_buffer[output_buffPtr + j];
-			  }
-			  inference_buffPtr += AUDIO_PCM_CHUNK_SIZE;
-			  output_buffPtr += AUDIO_PCM_CHUNK_SIZE;
-		  }
-		  bufferStatus &= ~BUFFER_OFFSET_HALF;
-
-		  //MX_X_CUBE_AI_Process(&output_buffer[])
-	  }
-
-	  // Wait for full-buffer
-	  if ((bufferStatus & BUFFER_OFFSET_FULL) == BUFFER_OFFSET_FULL)
-	  {
-		  // Invalidate cache to avoid data mismatch issues
-		  dcache_invalidate(&input_buffer[AUDIO_BUFFER_SIZE/2], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
-		  printf("Buffer full! \r\n");
-
-		  // Process the second half the same way
-		  for (int i = 0; i < (AUDIO_BUFFER_SIZE/2) / PDM_WORDS_PER_CHUNK; i++)
-		  {
-			  uint16_t *pdm_chunk = &input_buffer[AUDIO_BUFFER_SIZE/2 + i * PDM_WORDS_PER_CHUNK];
-			  uint16_t  *pcm_out    = &output_buffer[output_buffPtr];
-			  BSP_AUDIO_IN_PDMToPCM(1, pdm_chunk, pcm_out);
-			  process_pcm_block(pcm_out);
-			  dcache_clean(pcm_out, AUDIO_PCM_CHUNK_SIZE * sizeof(int16_t));
-			  for (int j = 0; j < AUDIO_PCM_CHUNK_SIZE; j++) {
-				  inference_buffer[inference_buffPtr + j] = output_buffer[output_buffPtr + j];
-			  }
-			  inference_buffPtr += AUDIO_PCM_CHUNK_SIZE;
-			  output_buffPtr += AUDIO_PCM_CHUNK_SIZE;
-		  }
-		  bufferStatus &= ~BUFFER_OFFSET_FULL;
-	  }
-
-	  // Wrap pcm pointer if needed
-	  if (output_buffPtr >= AUDIO_BUFFER_SIZE)
-		  output_buffPtr = 0;
-	  if (inference_buffPtr >= INFERENCE_BUFFER_SIZE) {
-		  MX_X_CUBE_AI_Process(&inference_buffer[INFERENCE_BUFFER_SIZE/2], INFERENCE_BUFFER_SIZE);
-		  inference_buffPtr = 0;
-		  while(1) {}
-	  }
+//	  // Wait for half-buffer
+//	  if ((bufferStatus & BUFFER_OFFSET_HALF) == BUFFER_OFFSET_HALF)
+//	  {
+//		  // Invalidate cache to avoid data mismatch issues
+//		  dcache_invalidate(&input_buffer[0], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
+//		  printf("Buffer half full! \r\n");
+//		  // Process the first half of PDM buffer to PCM
+//		  for (int i = 0; i < (AUDIO_BUFFER_SIZE/2) / PDM_WORDS_PER_CHUNK; i++)
+//		  {
+//			  uint16_t *pdm_chunk = &input_buffer[i * PDM_WORDS_PER_CHUNK];
+//			  uint16_t  *pcm_out    = &output_buffer[output_buffPtr];
+//			  BSP_AUDIO_IN_PDMToPCM(1, pdm_chunk, pcm_out); // Apply PDM2PCM filter
+//			  process_pcm_block(pcm_out); // Denoise PCM output with FIR filter
+//			  dcache_clean(pcm_out, AUDIO_PCM_CHUNK_SIZE * sizeof(int16_t)); // Clean cache to avoid data mismatch issues
+//			  for (int j = 0; j < AUDIO_PCM_CHUNK_SIZE; j++) {
+//				  inference_buffer[inference_buffPtr + j] = output_buffer[output_buffPtr + j];
+//			  }
+//			  inference_buffPtr += AUDIO_PCM_CHUNK_SIZE;
+//			  output_buffPtr += AUDIO_PCM_CHUNK_SIZE;
+//		  }
+//		  bufferStatus &= ~BUFFER_OFFSET_HALF;
+//
+//		  //MX_X_CUBE_AI_Process(&output_buffer[])
+//	  }
+//
+//	  // Wait for full-buffer
+//	  if ((bufferStatus & BUFFER_OFFSET_FULL) == BUFFER_OFFSET_FULL)
+//	  {
+//		  // Invalidate cache to avoid data mismatch issues
+//		  dcache_invalidate(&input_buffer[AUDIO_BUFFER_SIZE/2], (AUDIO_BUFFER_SIZE/2)*sizeof(uint16_t));
+//		  printf("Buffer full! \r\n");
+//
+//		  // Process the second half the same way
+//		  for (int i = 0; i < (AUDIO_BUFFER_SIZE/2) / PDM_WORDS_PER_CHUNK; i++)
+//		  {
+//			  uint16_t *pdm_chunk = &input_buffer[AUDIO_BUFFER_SIZE/2 + i * PDM_WORDS_PER_CHUNK];
+//			  uint16_t  *pcm_out    = &output_buffer[output_buffPtr];
+//			  BSP_AUDIO_IN_PDMToPCM(1, pdm_chunk, pcm_out);
+//			  process_pcm_block(pcm_out);
+//			  dcache_clean(pcm_out, AUDIO_PCM_CHUNK_SIZE * sizeof(int16_t));
+//			  for (int j = 0; j < AUDIO_PCM_CHUNK_SIZE; j++) {
+//				  inference_buffer[inference_buffPtr + j] = output_buffer[output_buffPtr + j];
+//			  }
+//			  inference_buffPtr += AUDIO_PCM_CHUNK_SIZE;
+//			  output_buffPtr += AUDIO_PCM_CHUNK_SIZE;
+//		  }
+//		  bufferStatus &= ~BUFFER_OFFSET_FULL;
+//	  }
+//
+//	  // Wrap pcm pointer if needed
+//	  if (output_buffPtr >= AUDIO_BUFFER_SIZE)
+//		  output_buffPtr = 0;
+//	  if (inference_buffPtr >= INFERENCE_BUFFER_SIZE) {
+//		  MX_X_CUBE_AI_Process(&inference_buffer[INFERENCE_BUFFER_SIZE/2], INFERENCE_BUFFER_SIZE);
+//		  inference_buffPtr = 0;
+//		  while(1) {}
+//	  }
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
-
-/* USER CODE BEGIN 4 */
-
-/**
-  * @brief Create a WAV header
-  * @param header Pointer to the wav_header structure
-  * @param sample_rate Sample rate in Hz
-  * @param num_channels Number of audio channels (1 for mono, 2 for stereo)
-  * @param bit_depth Bit depth (e.g., 16 for PCM)
-  * @param data_size Size of the audio data in bytes
-  */
-void create_wav_header(wav_header *header, int sample_rate, int num_channels, int bit_depth, int data_size) {
-	// RIFF Header
-	memcpy(header->riff_header, "RIFF", 4);
-	header->wav_size = data_size + 36; // Total file size - 8 bytes for RIFF header
-	memcpy(header->wave_header, "WAVE", 4);
-
-	// Format Header
-	memcpy(header->fmt_header, "fmt ", 4); // Note the trailing space
-	header->fmt_chunk_size = 16; // For PCM
-	header->audio_format = 1; // PCM
-	header->num_channels = num_channels;
-	header->sample_rate = sample_rate;
-	header->byte_rate = sample_rate * num_channels * (bit_depth / 8);
-	header->sample_alignment = num_channels * (bit_depth / 8);
-	header->bit_depth = bit_depth;
-
-	// Data Header
-	memcpy(header->data_header, "data", 4);
-	header->data_bytes = data_size; // Number of bytes in data
-}
-
-/**
-  * @brief SD Card Power Test
-  * @retval None
-  */
-static void SD_Card_Power_Test(void){
-	FATFS FatFs;
-	FIL Fil;
-	FRESULT FR_Status;
-	UINT WWC;
-
-	// Mount the SD card
-	FR_Status = f_mount(&FatFs, SDPath, 1);
-	if (FR_Status != FR_OK){
-		printf("Error! While Mounting SD Card, Error Code: (%i)\r\n", FR_Status);
-	}
-	printf("SD Card Mounted Successfully! \r\n\n");
-
-	HAL_Delay(1000);
-	// Toggle pin when starting to write
-	HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
-	// Open a file for writing and write to it
-	FR_Status = f_open(&Fil, "BuowSample.wav", FA_WRITE | FA_READ | FA_CREATE_ALWAYS);
-	if(FR_Status != FR_OK)
-	{
-	  printf("Error! While Creating/Opening A New Text File, Error Code: (%i)\r\n", FR_Status);
-	  return;
-	}
-
-	//create wav header for audio data
-	printf("buow_pcm_size: %d\r\n", buow_pcm_size);
-	//wav_header header;
-	//create_wav_header(&header, 16000, 1, 16, buow_pcm_size);
-
-	// Write Data To The Text File
-	//f_puts("Writing to SD Card Over SDMMC\n", &Fil);
-	//f_write(&Fil, &header, sizeof(wav_header), &WWC);
-	//printf("Header Bytes Written: %d\r\n", WWC);
-	f_write(&Fil, buow_pcm_buffer, buow_pcm_size, &WWC);
-	printf("Data Bytes Written: %d\r\n", WWC);
-
-
-	// Close The File
-	f_close(&Fil);
-
-	// Toggle pin when done writing
-	HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
-}
-
-/* USER CODE END 4 */
 
 /**
   * @brief System Clock Configuration
@@ -467,7 +485,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.SYSCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB3CLKDivider = RCC_APB3_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_APB1_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_APB1_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_APB2_DIV2;
   RCC_ClkInitStruct.APB4CLKDivider = RCC_APB4_DIV1;
 
@@ -504,7 +522,6 @@ void PeriphCommonClock_Config(void)
   }
 }
 
-#ifdef AUDIO_PLAYBACK
 /**
   * @brief SAI1 Initialization Function
   * @param None
@@ -528,13 +545,13 @@ static void MX_SAI1_Init(void)
   hsai_BlockA1.Init.ClockStrobing = SAI_CLOCKSTROBING_FALLINGEDGE;
   hsai_BlockA1.Init.Synchro = SAI_ASYNCHRONOUS;
   hsai_BlockA1.Init.OutputDrive = SAI_OUTPUTDRIVE_DISABLE;
-  hsai_BlockA1.Init.NoDivider = SAI_MASTERDIVIDER_DISABLE;
-  hsai_BlockA1.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_ENABLE;
-  hsai_BlockA1.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_EMPTY;
-  hsai_BlockA1.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_16K;
-  //hsai_BlockA1.Init.Mckdiv = 6;
+  hsai_BlockA1.Init.NoDivider = SAI_MCK_OVERSAMPLING_DISABLE;
+  hsai_BlockA1.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_DISABLE;
+  hsai_BlockA1.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_1QF;
+  hsai_BlockA1.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_MCKDIV;
+  hsai_BlockA1.Init.Mckdiv = 6;
   hsai_BlockA1.Init.SynchroExt = SAI_SYNCEXT_DISABLE;
-  hsai_BlockA1.Init.MonoStereoMode = SAI_MONOMODE;
+  hsai_BlockA1.Init.MonoStereoMode = SAI_STEREOMODE;
   hsai_BlockA1.Init.CompandingMode = SAI_NOCOMPANDING;
   hsai_BlockA1.Init.TriState = SAI_OUTPUT_NOTRELEASED;
   hsai_BlockA1.Init.PdmInit.Activation = DISABLE;
@@ -560,23 +577,6 @@ static void MX_SAI1_Init(void)
 }
 
 /**
-  * Enable DMA controller clock
-  */
-static void MX_DMA_Init(void)
-{
-
-  /* DMA controller clock enable */
-  __HAL_RCC_DMA2_CLK_ENABLE();
-
-  /* DMA interrupt init */
-  /* DMA2_Stream1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
-
-}
-#endif
-
-/**
   * @brief SAI4 Initialization Function
   * @param None
   * @retval None
@@ -598,9 +598,9 @@ static void MX_SAI4_Init(void)
   hsai_BlockA4.Init.ClockStrobing = SAI_CLOCKSTROBING_FALLINGEDGE;
   hsai_BlockA4.Init.Synchro = SAI_ASYNCHRONOUS;
   hsai_BlockA4.Init.OutputDrive = SAI_OUTPUTDRIVE_DISABLE;
-  hsai_BlockA4.Init.NoDivider = SAI_MASTERDIVIDER_DISABLE;
+  hsai_BlockA4.Init.NoDivider = SAI_MCK_OVERSAMPLING_ENABLE;
   hsai_BlockA4.Init.MckOverSampling = SAI_MCK_OVERSAMPLING_ENABLE;
-  hsai_BlockA4.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_HF;
+  hsai_BlockA4.Init.FIFOThreshold = SAI_FIFOTHRESHOLD_EMPTY;
   hsai_BlockA4.Init.AudioFrequency = SAI_AUDIO_FREQUENCY_MCKDIV;
   hsai_BlockA4.Init.Mckdiv = 6;
   hsai_BlockA4.Init.MonoStereoMode = SAI_STEREOMODE;
@@ -654,6 +654,102 @@ static void MX_SDMMC1_SD_Init(void)
   /* USER CODE BEGIN SDMMC1_Init 2 */
 
   /* USER CODE END SDMMC1_Init 2 */
+
+}
+
+/**
+  * @brief UART4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_UART4_Init(void)
+{
+
+  /* USER CODE BEGIN UART4_Init 0 */
+
+  /* USER CODE END UART4_Init 0 */
+
+  /* USER CODE BEGIN UART4_Init 1 */
+
+  /* USER CODE END UART4_Init 1 */
+  huart4.Instance = UART4;
+  huart4.Init.BaudRate = 115200;
+  huart4.Init.WordLength = UART_WORDLENGTH_8B;
+  huart4.Init.StopBits = UART_STOPBITS_1;
+  huart4.Init.Parity = UART_PARITY_NONE;
+  huart4.Init.Mode = UART_MODE_TX_RX;
+  huart4.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart4.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart4.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart4.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  huart4.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart4, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart4, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_DisableFifoMode(&huart4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN UART4_Init 2 */
+
+  /* USER CODE END UART4_Init 2 */
+
+}
+
+/**
+  * @brief UART8 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_UART8_Init(void)
+{
+
+  /* USER CODE BEGIN UART8_Init 0 */
+
+  /* USER CODE END UART8_Init 0 */
+
+  /* USER CODE BEGIN UART8_Init 1 */
+
+  /* USER CODE END UART8_Init 1 */
+  huart8.Instance = UART8;
+  huart8.Init.BaudRate = 9600;
+  huart8.Init.WordLength = UART_WORDLENGTH_8B;
+  huart8.Init.StopBits = UART_STOPBITS_1;
+  huart8.Init.Parity = UART_PARITY_NONE;
+  huart8.Init.Mode = UART_MODE_TX_RX;
+  huart8.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart8.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart8.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart8.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  huart8.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart8, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart8, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_DisableFifoMode(&huart8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN UART8_Init 2 */
+
+  /* USER CODE END UART8_Init 2 */
 
 }
 
@@ -718,6 +814,22 @@ static void MX_BDMA_Init(void)
   /* BDMA_Channel0_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(BDMA_Channel0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(BDMA_Channel0_IRQn);
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA2_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA2_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
 
 }
 
@@ -811,70 +923,80 @@ void fir_init(void) {
 }
 
 /**
-  * @brief  Apply FIR filter to PCM chunk for denoising
-  * @param  pcm_chunk : Pointer to PCM chunk to be processed
-  * @retval None
+  * @brief Create a WAV header
+  * @param header Pointer to the wav_header structure
+  * @param sample_rate Sample rate in Hz
+  * @param num_channels Number of audio channels (1 for mono, 2 for stereo)
+  * @param bit_depth Bit depth (e.g., 16 for PCM)
+  * @param data_size Size of the audio data in bytes
   */
-void process_pcm_block(uint16_t *pcm_chunk) {
-    // Allocate a temporary buffer to keep original unfiltered PCM.
-    q15_t filtered[AUDIO_PCM_CHUNK_SIZE];
+void create_wav_header(wav_header *header, int sample_rate, int num_channels, int bit_depth, int data_size) {
+	// RIFF Header
+	memcpy(header->riff_header, "RIFF", 4);
+	header->wav_size = data_size + 36; // Total file size - 8 bytes for RIFF header
+	memcpy(header->wave_header, "WAVE", 4);
 
-    // Run the FIR: input is q15_t, but int16_t map directly to q15_t
-    arm_fir_q15(&S,
-                (q15_t *)pcm_chunk,  // source buffer
-                filtered,            // destination buffer
-				AUDIO_PCM_CHUNK_SIZE);     // number of samples
+	// Format Header
+	memcpy(header->fmt_header, "fmt ", 4); // Note the trailing space
+	header->fmt_chunk_size = 16; // For PCM
+	header->audio_format = 1; // PCM
+	header->num_channels = num_channels;
+	header->sample_rate = sample_rate;
+	header->byte_rate = sample_rate * num_channels * (bit_depth / 8);
+	header->sample_alignment = num_channels * (bit_depth / 8);
+	header->bit_depth = bit_depth;
 
-    // Copy back filtered output to pcm_chunk
-    for (int i = 0; i < AUDIO_PCM_CHUNK_SIZE; i++) {
-        pcm_chunk[i] = filtered[i];
-    }
+	// Data Header
+	memcpy(header->data_header, "data", 4);
+	header->data_bytes = data_size; // Number of bytes in data
 }
 
 /**
-  * @brief  Invalidate portion of DCache
-  * @param  addr : Address of memory location to be invalidated
-  * @param  size : Size of memory chunk to be invalidated
+  * @brief SD Card Power Test
   * @retval None
   */
-static void dcache_invalidate(void *addr, uint32_t size) {
-    uint32_t a = (uint32_t)addr & ~31U;
-    uint32_t s = ((size + 31U) & ~31U);
-    SCB_InvalidateDCache_by_Addr((uint32_t*)a, s);
-}
+static void SD_Card_Power_Test(void){
+	FATFS FatFs;
+	FIL Fil;
+	FRESULT FR_Status;
+	UINT WWC;
 
-/**
-  * @brief  Clean portion of DCache
-  * @param  addr : Address of memory location to be cleaned
-  * @param  size : Size of memory chunk to be cleaned
-  * @retval None
-  */
-static void dcache_clean(void *addr, uint32_t size) {
-    uint32_t a = (uint32_t)addr & ~31U;
-    uint32_t s = ((size + 31U) & ~31U);
-    SCB_CleanDCache_by_Addr((uint32_t*)a, s);
-}
+	// Mount the SD card
+	FR_Status = f_mount(&FatFs, SDPath, 1);
+	if (FR_Status != FR_OK){
+		printf("Error! While Mounting SD Card, Error Code: (%i)\r\n", FR_Status);
+	}
+	printf("SD Card Mounted Successfully! \r\n\n");
 
-/**
-  * @brief  Rx Transfer completed callbacks.
-  * @param  hsai : pointer to a SAI_HandleTypeDef structure that contains
-  *                the configuration information for SAI module.
-  * @retval None
-  */
-void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai)
-{
-	bufferStatus |= BUFFER_OFFSET_FULL;
-}
+	HAL_Delay(1000);
+	// Toggle pin when starting to write
+	HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
+	// Open a file for writing and write to it
+	FR_Status = f_open(&Fil, "BuowSample.wav", FA_WRITE | FA_READ | FA_CREATE_ALWAYS);
+	if(FR_Status != FR_OK)
+	{
+	  printf("Error! While Creating/Opening A New Text File, Error Code: (%i)\r\n", FR_Status);
+	  return;
+	}
 
-/**
-  * @brief  Rx Transfer Half completed callbacks
-  * @param  hsai : pointer to a SAI_HandleTypeDef structure that contains
-  *                the configuration information for SAI module.
-  * @retval None
-  */
-void HAL_SAI_RxHalfCpltCallback(SAI_HandleTypeDef *hsai)
-{
-	bufferStatus |= BUFFER_OFFSET_HALF;
+	//create wav header for audio data
+	printf("buow_pcm_size: %d\r\n", buow_pcm_size);
+	//wav_header header;
+	//create_wav_header(&header, 16000, 1, 16, buow_pcm_size);
+
+	// Write Data To The Text File
+	//f_puts("Writing to SD Card Over SDMMC\n", &Fil);
+	//f_write(&Fil, &header, sizeof(wav_header), &WWC);
+	//printf("Header Bytes Written: %d\r\n", WWC);
+	f_write(&Fil, buow_pcm_buffer, buow_pcm_size, &WWC);
+	printf("Data Bytes Written: %d\r\n", WWC);
+
+
+	// Close The File
+	f_close(&Fil);
+
+	// Toggle pin when done writing
+	HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
 }
 /* USER CODE END 4 */
 
@@ -893,7 +1015,6 @@ void Error_Handler(void)
   }
   /* USER CODE END Error_Handler_Debug */
 }
-
 #ifdef USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number

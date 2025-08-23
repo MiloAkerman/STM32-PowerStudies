@@ -188,7 +188,81 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
-  if(huart->Instance==USART1)
+  if(huart->Instance==UART4)
+  {
+    /* USER CODE BEGIN UART4_MspInit 0 */
+
+    /* USER CODE END UART4_MspInit 0 */
+
+  /** Initializes the peripherals clock
+  */
+    PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_UART4;
+    PeriphClkInitStruct.Usart234578ClockSelection = RCC_USART234578CLKSOURCE_D2PCLK1;
+    if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
+    {
+      Error_Handler();
+    }
+
+    /* Peripheral clock enable */
+    __HAL_RCC_UART4_CLK_ENABLE();
+
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    /**UART4 GPIO Configuration
+    PA0_C     ------> UART4_TX
+    PA1_C     ------> UART4_RX
+    */
+    GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.Alternate = GPIO_AF8_UART4;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    /* UART4 interrupt Init */
+    HAL_NVIC_SetPriority(UART4_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(UART4_IRQn);
+    /* USER CODE BEGIN UART4_MspInit 1 */
+
+    /* USER CODE END UART4_MspInit 1 */
+  }
+  else if(huart->Instance==UART8)
+  {
+    /* USER CODE BEGIN UART8_MspInit 0 */
+
+    /* USER CODE END UART8_MspInit 0 */
+
+  /** Initializes the peripherals clock
+  */
+    PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_UART8;
+    PeriphClkInitStruct.Usart234578ClockSelection = RCC_USART234578CLKSOURCE_D2PCLK1;
+    if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
+    {
+      Error_Handler();
+    }
+
+    /* Peripheral clock enable */
+    __HAL_RCC_UART8_CLK_ENABLE();
+
+    __HAL_RCC_GPIOJ_CLK_ENABLE();
+    /**UART8 GPIO Configuration
+    PJ9     ------> UART8_RX
+    PJ8     ------> UART8_TX
+    */
+    GPIO_InitStruct.Pin = GPIO_PIN_9|GPIO_PIN_8;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.Alternate = GPIO_AF8_UART8;
+    HAL_GPIO_Init(GPIOJ, &GPIO_InitStruct);
+
+    /* UART8 interrupt Init */
+    HAL_NVIC_SetPriority(UART8_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(UART8_IRQn);
+    /* USER CODE BEGIN UART8_MspInit 1 */
+
+    /* USER CODE END UART8_MspInit 1 */
+  }
+  else if(huart->Instance==USART1)
   {
     /* USER CODE BEGIN USART1_MspInit 0 */
 
@@ -221,7 +295,6 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
     /* USER CODE BEGIN USART1_MspInit 1 */
 
     /* USER CODE END USART1_MspInit 1 */
-
   }
 
 }
@@ -234,7 +307,47 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
   */
 void HAL_UART_MspDeInit(UART_HandleTypeDef* huart)
 {
-  if(huart->Instance==USART1)
+  if(huart->Instance==UART4)
+  {
+    /* USER CODE BEGIN UART4_MspDeInit 0 */
+
+    /* USER CODE END UART4_MspDeInit 0 */
+    /* Peripheral clock disable */
+    __HAL_RCC_UART4_CLK_DISABLE();
+
+    /**UART4 GPIO Configuration
+    PA0_C     ------> UART4_TX
+    PA1_C     ------> UART4_RX
+    */
+    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_0|GPIO_PIN_1);
+
+    /* UART4 interrupt DeInit */
+    HAL_NVIC_DisableIRQ(UART4_IRQn);
+    /* USER CODE BEGIN UART4_MspDeInit 1 */
+
+    /* USER CODE END UART4_MspDeInit 1 */
+  }
+  else if(huart->Instance==UART8)
+  {
+    /* USER CODE BEGIN UART8_MspDeInit 0 */
+
+    /* USER CODE END UART8_MspDeInit 0 */
+    /* Peripheral clock disable */
+    __HAL_RCC_UART8_CLK_DISABLE();
+
+    /**UART8 GPIO Configuration
+    PJ9     ------> UART8_RX
+    PJ8     ------> UART8_TX
+    */
+    HAL_GPIO_DeInit(GPIOJ, GPIO_PIN_9|GPIO_PIN_8);
+
+    /* UART8 interrupt DeInit */
+    HAL_NVIC_DisableIRQ(UART8_IRQn);
+    /* USER CODE BEGIN UART8_MspDeInit 1 */
+
+    /* USER CODE END UART8_MspDeInit 1 */
+  }
+  else if(huart->Instance==USART1)
   {
     /* USER CODE BEGIN USART1_MspDeInit 0 */
 
@@ -315,11 +428,9 @@ void HAL_SAI_MspInit(SAI_HandleTypeDef* hsai)
 
     /* Several peripheral DMA handle pointers point to the same DMA handle.
      Be aware that there is only one channel to perform all the requested DMAs. */
-    __HAL_LINKDMA(hsai,hdmatx,hdma_sai1_a);
+    __HAL_LINKDMA(hsai,hdmarx,hdma_sai1_a);
 
-	/* SAI DMA IRQ Channel configuration */
-	HAL_NVIC_SetPriority(AUDIO_OUT_SAIx_DMAx_IRQ, AUDIO_IRQ_PREPRIO, 0);
-	HAL_NVIC_EnableIRQ(AUDIO_OUT_SAIx_DMAx_IRQ);
+    __HAL_LINKDMA(hsai,hdmatx,hdma_sai1_a);
 
     }
 /* SAI4 */
