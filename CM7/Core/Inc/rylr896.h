@@ -12,6 +12,8 @@
 extern "C" {
 #endif
 
+#include <stdint.h>
+
 //AT Command Set
 #define TEST_COMMAND			"AT"
 #define AT						"AT+"
@@ -61,6 +63,7 @@ Rylr896_Status_t Rylr896SetAddress(char *address);
 Rylr896_Status_t Rylr896setNetworkID(char *networkID);
 Rylr896_Status_t Rylr896SetParameter(char *parameter);
 Rylr896_Status_t Rylr896Send(char *address, char *payload_len, char *payload);
+Rylr896_Status_t Rylr896Receive(uint8_t *rxBuffer, uint8_t bufferSize);
 
 #ifdef __cplusplus
 }

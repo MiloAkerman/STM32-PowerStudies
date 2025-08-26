@@ -102,33 +102,34 @@ static void dcache_clean(void *addr, uint32_t size);
 static void SD_Card_Power_Test(void);
 void create_wav_header(wav_header *header,
 		int sample_rate, int num_channels, int bit_depth, int data_size);
+void LoRa_Transmitter_Test(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-uint8_t reception_complete = 0;
-
-uint8_t TX_String[] = "hello";
-uint8_t RX_String[20];
-
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
-	reception_complete = 1;
-
-}
-
-void check_alpha(void)
-{
-	if(strcmp((char*)RX_String, (char*)TX_String)==0)
-	{
-		printf("Match!\r\n");
-	}
-	else
-	{
-		printf("No Match!\r\n");
-	}
-}
+//uint8_t reception_complete = 0;
+//
+//uint8_t TX_String[] = "hello";
+//uint8_t RX_String[20];
+//
+//void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+//{
+//	reception_complete = 1;
+//
+//}
+//
+//void check_alpha(void)
+//{
+//	if(strcmp((char*)RX_String, (char*)TX_String)==0)
+//	{
+//		printf("Match!\r\n");
+//	}
+//	else
+//	{
+//		printf("No Match!\r\n");
+//	}
+//}
 
 /**
  * @brief  Re-implementation of printf() to operate with USART (DO NOT REMOVE OR WILL NOT PRINT)
@@ -292,83 +293,12 @@ int main(void)
 
   /* Initialize Rx buffer status */
   bufferStatus &= BUFFER_OFFSET_NONE;
-  uint8_t rxBuffer[20] = {0};
-
-  //Enable pin to toggle the rylr896 reset pin
-  printf("Enabling RYLR896...\r\n");
-//  HAL_GPIO_WritePin(GPIOJ, GPIO_PIN_7, GPIO_PIN_SET);
-//  HAL_Delay(100);
-
-  //Test for a response command from the rylr896 module
-  reception_complete = 0;
-  HAL_UART_Receive_IT(&huart8, rxBuffer, 5);
-  Rylr896_Status_t ret = Rylr896Test();
-  if(ret != Rylr896_OK) {
-	  printf("RYLR896 module is not responding! Error code: %d\r\n", ret);
-	  Error_Handler();
-  }
-  /* wait for reception to be completed */
-  while (!reception_complete) {}
-  printf("Module Response: %s\r\n", (char*) rxBuffer);
-
-  //set the address of the rylr896 module
-  reception_complete = 0;
-  HAL_UART_Receive_IT(&huart8, rxBuffer, 5);
-  ret = Rylr896SetAddress("2");
-  if(ret != Rylr896_OK) {
-  	  printf("RYLR896 module is not responding! Error code: %d\r\n", ret);
-  	  Error_Handler();
-    }
-  /* wait for reception to be completed */
-  while (!reception_complete) {}
-  printf("Module Response: %s\r\n", rxBuffer);
-
-  reception_complete = 0;
-  HAL_UART_Receive_IT(&huart8, rxBuffer, 5);
-  ret = Rylr896setNetworkID("5");
-  if(ret != Rylr896_OK) {
-	  printf("RYLR896 module is not responding! Error code: %d\r\n", ret);
-	  Error_Handler();
-  }
-  while (!reception_complete) {}
-  printf("Module Response: %s\r\n", rxBuffer);
-
-  reception_complete = 0;
-  HAL_UART_Receive_IT(&huart8, rxBuffer, 5);
-  ret = Rylr896SetParameter("10,7,1,7");
-  if(ret != Rylr896_OK) {
-	  printf("RYLR896 module is not responding! Error code: %d\r\n", ret);
-	  Error_Handler();
-  }
-  while (!reception_complete) {}
-  printf("Module Response: %s\r\n", rxBuffer);
-
-//  reception_complete = 0;
-//  HAL_UART_Receive_IT(&huart8, rxBuffer, 5);
-//  ret = Rylr896Send("3", "5", "Hello");
-//  if(ret != Rylr896_OK) {
-//	  printf("RYLR896 module is not responding! Error code: %d\r\n", ret);
-//	  Error_Handler();
-//  }
-//  while (!reception_complete) {}
-//  printf("Module Response: %s\r\n", rxBuffer);
+  LoRa_Transmitter_Test();
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-
-//  reception_complete = 0;
-//  HAL_UART_Receive_IT(&huart8, RX_String, sizeof(TX_String));
-//  HAL_UART_Transmit(&huart8, TX_String, sizeof(TX_String), 10);
-//
-//  /* wait for reception to be completed */
-//  while (!reception_complete) {}
-//  printf("Received string: %s\r\n", RX_String);
-//
-//  /* at this step, reception is completed, compare Tx and Rx strings */
-//  check_alpha();
-
   while (1)
   {
 
@@ -434,6 +364,144 @@ int main(void)
   }
   /* USER CODE END 3 */
 }
+
+/* USER CODE BEGIN 4 */
+
+void LoRa_Transmitter_Test(void){
+  uint8_t rxBuffer[20] = {0};
+
+  //Test for a response command from the rylr896 module
+  Rylr896_Status_t ret = Rylr896Test();
+  if(ret != Rylr896_OK) {
+	  printf("RYLR896 module is not responding! Error code: %d\r\n", ret);
+	  Error_Handler();
+  }
+  HAL_UART_Receive(&huart8, rxBuffer, 5, HAL_MAX_DELAY);
+  printf("Module Response: %s\r\n", (char*) rxBuffer);
+
+  //set the address of the rylr896 module
+  ret = Rylr896SetAddress("2");
+  if(ret != Rylr896_OK) {
+	  printf("RYLR896 module is not responding! Error code: %d\r\n", ret);
+	  Error_Handler();
+	}
+  HAL_UART_Receive(&huart8, rxBuffer, 5, HAL_MAX_DELAY);
+  printf("Module Response: %s\r\n", rxBuffer);
+
+  //set the network ID of the rylr896 module
+  ret = Rylr896setNetworkID("5");
+  if(ret != Rylr896_OK) {
+	  printf("RYLR896 module is not responding! Error code: %d\r\n", ret);
+	  Error_Handler();
+  }
+  HAL_UART_Receive(&huart8, rxBuffer, 5, HAL_MAX_DELAY);
+  printf("Module Response: %s\r\n", rxBuffer);
+
+  //set the parameters of the rylr896 module
+  ret = Rylr896SetParameter("10,7,1,7");
+  if(ret != Rylr896_OK) {
+	  printf("RYLR896 module is not responding! Error code: %d\r\n", ret);
+	  Error_Handler();
+  }
+  HAL_UART_Receive(&huart8, rxBuffer, 5, HAL_MAX_DELAY);
+  printf("Module Response: %s\r\n", rxBuffer);
+
+  //send a message to another rylr896 module
+  ret = Rylr896Send("3", "5", "Hello");
+  if(ret != Rylr896_OK) {
+	  printf("RYLR896 module is not responding! Error code: %d\r\n", ret);
+	  Error_Handler();
+  }
+  HAL_UART_Receive(&huart8, rxBuffer, 5, HAL_MAX_DELAY);
+  printf("Module Response: %s\r\n", rxBuffer);
+}
+
+/**
+  * @brief  Config the FIR filter for PCM denoising
+  * @param  None
+  * @retval None
+  */
+void fir_init(void) {
+    arm_fir_init_q15(&S, FIR_TAPS, (q15_t *)firCoeffs, firState, AUDIO_PCM_CHUNK_SIZE);
+}
+
+/**
+  * @brief Create a WAV header
+  * @param header Pointer to the wav_header structure
+  * @param sample_rate Sample rate in Hz
+  * @param num_channels Number of audio channels (1 for mono, 2 for stereo)
+  * @param bit_depth Bit depth (e.g., 16 for PCM)
+  * @param data_size Size of the audio data in bytes
+  */
+void create_wav_header(wav_header *header, int sample_rate, int num_channels, int bit_depth, int data_size) {
+	// RIFF Header
+	memcpy(header->riff_header, "RIFF", 4);
+	header->wav_size = data_size + 36; // Total file size - 8 bytes for RIFF header
+	memcpy(header->wave_header, "WAVE", 4);
+
+	// Format Header
+	memcpy(header->fmt_header, "fmt ", 4); // Note the trailing space
+	header->fmt_chunk_size = 16; // For PCM
+	header->audio_format = 1; // PCM
+	header->num_channels = num_channels;
+	header->sample_rate = sample_rate;
+	header->byte_rate = sample_rate * num_channels * (bit_depth / 8);
+	header->sample_alignment = num_channels * (bit_depth / 8);
+	header->bit_depth = bit_depth;
+
+	// Data Header
+	memcpy(header->data_header, "data", 4);
+	header->data_bytes = data_size; // Number of bytes in data
+}
+
+/**
+  * @brief SD Card Power Test
+  * @retval None
+  */
+static void SD_Card_Power_Test(void){
+	FATFS FatFs;
+	FIL Fil;
+	FRESULT FR_Status;
+	UINT WWC;
+
+	// Mount the SD card
+	FR_Status = f_mount(&FatFs, SDPath, 1);
+	if (FR_Status != FR_OK){
+		printf("Error! While Mounting SD Card, Error Code: (%i)\r\n", FR_Status);
+	}
+	printf("SD Card Mounted Successfully! \r\n\n");
+
+	HAL_Delay(1000);
+	// Toggle pin when starting to write
+	HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
+	// Open a file for writing and write to it
+	FR_Status = f_open(&Fil, "BuowSample.wav", FA_WRITE | FA_READ | FA_CREATE_ALWAYS);
+	if(FR_Status != FR_OK)
+	{
+	  printf("Error! While Creating/Opening A New Text File, Error Code: (%i)\r\n", FR_Status);
+	  return;
+	}
+
+	//create wav header for audio data
+	printf("buow_pcm_size: %d\r\n", buow_pcm_size);
+	//wav_header header;
+	//create_wav_header(&header, 16000, 1, 16, buow_pcm_size);
+
+	// Write Data To The Text File
+	//f_puts("Writing to SD Card Over SDMMC\n", &Fil);
+	//f_write(&Fil, &header, sizeof(wav_header), &WWC);
+	//printf("Header Bytes Written: %d\r\n", WWC);
+	f_write(&Fil, buow_pcm_buffer, buow_pcm_size, &WWC);
+	printf("Data Bytes Written: %d\r\n", WWC);
+
+
+	// Close The File
+	f_close(&Fil);
+
+	// Toggle pin when done writing
+	HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
+}
+/* USER CODE END 4 */
 
 /**
   * @brief System Clock Configuration
@@ -910,95 +978,6 @@ static void MX_GPIO_Init(void)
 
   /* USER CODE END MX_GPIO_Init_2 */
 }
-
-/* USER CODE BEGIN 4 */
-
-/**
-  * @brief  Config the FIR filter for PCM denoising
-  * @param  None
-  * @retval None
-  */
-void fir_init(void) {
-    arm_fir_init_q15(&S, FIR_TAPS, (q15_t *)firCoeffs, firState, AUDIO_PCM_CHUNK_SIZE);
-}
-
-/**
-  * @brief Create a WAV header
-  * @param header Pointer to the wav_header structure
-  * @param sample_rate Sample rate in Hz
-  * @param num_channels Number of audio channels (1 for mono, 2 for stereo)
-  * @param bit_depth Bit depth (e.g., 16 for PCM)
-  * @param data_size Size of the audio data in bytes
-  */
-void create_wav_header(wav_header *header, int sample_rate, int num_channels, int bit_depth, int data_size) {
-	// RIFF Header
-	memcpy(header->riff_header, "RIFF", 4);
-	header->wav_size = data_size + 36; // Total file size - 8 bytes for RIFF header
-	memcpy(header->wave_header, "WAVE", 4);
-
-	// Format Header
-	memcpy(header->fmt_header, "fmt ", 4); // Note the trailing space
-	header->fmt_chunk_size = 16; // For PCM
-	header->audio_format = 1; // PCM
-	header->num_channels = num_channels;
-	header->sample_rate = sample_rate;
-	header->byte_rate = sample_rate * num_channels * (bit_depth / 8);
-	header->sample_alignment = num_channels * (bit_depth / 8);
-	header->bit_depth = bit_depth;
-
-	// Data Header
-	memcpy(header->data_header, "data", 4);
-	header->data_bytes = data_size; // Number of bytes in data
-}
-
-/**
-  * @brief SD Card Power Test
-  * @retval None
-  */
-static void SD_Card_Power_Test(void){
-	FATFS FatFs;
-	FIL Fil;
-	FRESULT FR_Status;
-	UINT WWC;
-
-	// Mount the SD card
-	FR_Status = f_mount(&FatFs, SDPath, 1);
-	if (FR_Status != FR_OK){
-		printf("Error! While Mounting SD Card, Error Code: (%i)\r\n", FR_Status);
-	}
-	printf("SD Card Mounted Successfully! \r\n\n");
-
-	HAL_Delay(1000);
-	// Toggle pin when starting to write
-	HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
-	// Open a file for writing and write to it
-	FR_Status = f_open(&Fil, "BuowSample.wav", FA_WRITE | FA_READ | FA_CREATE_ALWAYS);
-	if(FR_Status != FR_OK)
-	{
-	  printf("Error! While Creating/Opening A New Text File, Error Code: (%i)\r\n", FR_Status);
-	  return;
-	}
-
-	//create wav header for audio data
-	printf("buow_pcm_size: %d\r\n", buow_pcm_size);
-	//wav_header header;
-	//create_wav_header(&header, 16000, 1, 16, buow_pcm_size);
-
-	// Write Data To The Text File
-	//f_puts("Writing to SD Card Over SDMMC\n", &Fil);
-	//f_write(&Fil, &header, sizeof(wav_header), &WWC);
-	//printf("Header Bytes Written: %d\r\n", WWC);
-	f_write(&Fil, buow_pcm_buffer, buow_pcm_size, &WWC);
-	printf("Data Bytes Written: %d\r\n", WWC);
-
-
-	// Close The File
-	f_close(&Fil);
-
-	// Toggle pin when done writing
-	HAL_GPIO_TogglePin(GPIOJ, GPIO_PIN_7);
-}
-/* USER CODE END 4 */
 
 /**
   * @brief  This function is executed in case of error occurrence.
