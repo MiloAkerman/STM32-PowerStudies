@@ -216,56 +216,56 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_BDMA_Init();
-  MX_MDMA_Init();
-  MX_DMA_Init();
+//  MX_BDMA_Init();
+//  MX_MDMA_Init();
+//  MX_DMA_Init();'
   MX_USART1_UART_Init();
-  MX_SAI4_Init();
-  MX_SDMMC1_SD_Init();
-  MX_FATFS_Init();
-  MX_SAI1_Init();
+//  MX_SAI4_Init();
+//  MX_SDMMC1_SD_Init();
+//  MX_FATFS_Init();
+//  MX_SAI1_Init();
   MX_UART8_Init();
-  MX_UART4_Init();
-  MX_X_CUBE_AI_Init();
+//  MX_UART4_Init();
+//  MX_X_CUBE_AI_Init();
   /* USER CODE BEGIN 2 */
 
-  BSP_AUDIO_Init_t BSP_OutputConfig = {0};
-  BSP_OutputConfig.BitsPerSample = BITS_PER_SAMPLE;
-  BSP_OutputConfig.ChannelsNbr = AUDIO_CHANNEL_NUMBER;
-  BSP_OutputConfig.Device = WM8994_OUT_HEADPHONE;
-  BSP_OutputConfig.SampleRate = AUDIO_FREQUENCY;
-  BSP_OutputConfig.Volume = 60;
-
-  memset(input_buffer, 0, AUDIO_BUFFER_SIZE * sizeof(uint16_t));
-  BSP_AUDIO_IN_Init(1, &BSP_OutputConfig); // unused for input, used for PDM2PCM
-
-  printf("Starting Input SAI4/BDMA...\r\n");
-
-  HAL_StatusTypeDef input_init_response;
-  input_init_response = HAL_SAI_Receive_DMA(&hsai_BlockA4, (uint8_t *)input_buffer, AUDIO_BUFFER_SIZE);
-  if (input_init_response != HAL_OK) {
-	  printf("SAI4/BDMA initialization failed! Error: %d\r\n", input_init_response);
-  } else {
-	  printf("SAI4/BDMA started successfully.\r\n");
-  }
-
-#ifdef AUDIO_PLAYBACK
-  BSP_AUDIO_OUT_Init(1, &BSP_OutputConfig);
-  printf("Starting Output SAI1/DMA...\r\n");
-
-  int32_t output_init_response;
-  output_init_response = BSP_AUDIO_OUT_Play(1, (uint8_t *)output_buffer, sizeof(output_buffer));
-  if (output_init_response != BSP_ERROR_NONE) {
-	  printf("SAI1/DMA initialization failed! Error: %ld\r\n", output_init_response);
-  } else {
-	  printf("SAI1/DMA started successfully.\r\n");
-  }
-#endif
-
-  // Initialize FIR filter
-  fir_init();
-  // Initialize PDM2PCM filter
-  BSP_AUDIO_IN_PDMToPCM_Init(1, AUDIO_FREQUENCY, AUDIO_CHANNEL_NUMBER, AUDIO_CHANNEL_NUMBER);
+//  BSP_AUDIO_Init_t BSP_OutputConfig = {0};
+//  BSP_OutputConfig.BitsPerSample = BITS_PER_SAMPLE;
+//  BSP_OutputConfig.ChannelsNbr = AUDIO_CHANNEL_NUMBER;
+//  BSP_OutputConfig.Device = WM8994_OUT_HEADPHONE;
+//  BSP_OutputConfig.SampleRate = AUDIO_FREQUENCY;
+//  BSP_OutputConfig.Volume = 60;
+//
+//  memset(input_buffer, 0, AUDIO_BUFFER_SIZE * sizeof(uint16_t));
+//  BSP_AUDIO_IN_Init(1, &BSP_OutputConfig); // unused for input, used for PDM2PCM
+//
+//  printf("Starting Input SAI4/BDMA...\r\n");
+//
+//  HAL_StatusTypeDef input_init_response;
+//  input_init_response = HAL_SAI_Receive_DMA(&hsai_BlockA4, (uint8_t *)input_buffer, AUDIO_BUFFER_SIZE);
+//  if (input_init_response != HAL_OK) {
+//	  printf("SAI4/BDMA initialization failed! Error: %d\r\n", input_init_response);
+//  } else {
+//	  printf("SAI4/BDMA started successfully.\r\n");
+//  }
+//
+//#ifdef AUDIO_PLAYBACK
+//  BSP_AUDIO_OUT_Init(1, &BSP_OutputConfig);
+//  printf("Starting Output SAI1/DMA...\r\n");
+//
+//  int32_t output_init_response;
+//  output_init_response = BSP_AUDIO_OUT_Play(1, (uint8_t *)output_buffer, sizeof(output_buffer));
+//  if (output_init_response != BSP_ERROR_NONE) {
+//	  printf("SAI1/DMA initialization failed! Error: %ld\r\n", output_init_response);
+//  } else {
+//	  printf("SAI1/DMA started successfully.\r\n");
+//  }
+//#endif
+//
+//  // Initialize FIR filter
+//  fir_init();
+//  // Initialize PDM2PCM filter
+//  BSP_AUDIO_IN_PDMToPCM_Init(1, AUDIO_FREQUENCY, AUDIO_CHANNEL_NUMBER, AUDIO_CHANNEL_NUMBER);
 
 //  SD_Card_Power_Test();
   
@@ -292,7 +292,7 @@ int main(void)
 //  HAL_PWREx_EnterSTANDBYMode(PWR_D1_DOMAIN);
 
   /* Initialize Rx buffer status */
-  bufferStatus &= BUFFER_OFFSET_NONE;
+//  bufferStatus &= BUFFER_OFFSET_NONE;
   LoRa_Transmitter_Test();
 
   /* USER CODE END 2 */
@@ -369,7 +369,9 @@ int main(void)
 
 void LoRa_Transmitter_Test(void){
   uint8_t rxBuffer[20] = {0};
-
+  char testString[240] = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus "
+		  "ac ipsum et arcu elementum iaculis. Nunc consequat nunc non ante tincidunt, et "
+		  "bibendum purus blandit. Curabitur porta tellus id dolor suscipit mollis. Ut volutpat tempus sed";
   //Test for a response command from the rylr896 module
   Rylr896_Status_t ret = Rylr896Test();
   if(ret != Rylr896_OK) {
@@ -407,10 +409,10 @@ void LoRa_Transmitter_Test(void){
   printf("Module Response: %s\r\n", rxBuffer);
 
   //send a message to another rylr896 module
-  ret = Rylr896Send("3", "5", "Hello");
+  ret = Rylr896Send("3", "239", testString);
   if(ret != Rylr896_OK) {
-	  printf("RYLR896 module is not responding! Error code: %d\r\n", ret);
-	  Error_Handler();
+	 printf("RYLR896 module is not responding! Error code: %d\r\n", ret);
+	 	 Error_Handler();
   }
   HAL_UART_Receive(&huart8, rxBuffer, 5, HAL_MAX_DELAY);
   printf("Module Response: %s\r\n", rxBuffer);

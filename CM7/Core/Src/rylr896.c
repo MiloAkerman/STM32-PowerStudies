@@ -133,32 +133,8 @@ Rylr896_Status_t Rylr896Send(char *address, char *payload_len, char *payload){
 	strcat((char *)uartTxBuffer, TERMINATOR);
 
 	ret = HAL_UART_Transmit(&huart8, (uint8_t*) uartTxBuffer, packetSize, HAL_MAX_DELAY);
-
 	return ret;
 }
 
-/* @brief Receive a packet from the RYLR896 module
- * @param rxBuffer: The buffer to store the received data
- * @param bufferSize: The size of the buffer
- * @return Rylr896_Status_t: Status of the operation
- */
-Rylr896_Status_t Rylr896Receive(uint8_t *rxBuffer, uint8_t bufferSize){
-	Rylr896_Status_t ret = Rylr896_ERROR;
-	const uint8_t packetSize = strlen(RX_PACKET_START) + strlen(RCV) + strlen(TERMINATOR);
-	uint8_t uartTxBuffer[packetSize] = {};
-
-	memcpy(uartTxBuffer, RX_PACKET_START, strlen(RX_PACKET_START));
-	strcat((char *)uartTxBuffer, RCV);
-	strcat((char *)uartTxBuffer, TERMINATOR);
-
-	ret = HAL_UART_Transmit(&huart8, (uint8_t*) uartTxBuffer, packetSize, HAL_MAX_DELAY);
-	if(ret != Rylr896_OK) {
-		return ret;
-	}
-
-	ret = HAL_UART_Receive(&huart8, rxBuffer, bufferSize, HAL_MAX_DELAY);
-
-	return ret;
-}
 
 
