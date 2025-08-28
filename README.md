@@ -27,6 +27,6 @@ This repo is intended to provide a comprehensive code base and documentation for
 
 ## Next Steps
 - [ ] Complete Cortex-M4 integration for DSP
-- [ ] Integrate LoRa for audio uplink
+- [ ] Integrate LoRa (point-to-gateway) for audio uplink
 - [ ] Build and attach autoencoder for audio compression
-- [ ] Test inference  
+- [ ] Test inference
