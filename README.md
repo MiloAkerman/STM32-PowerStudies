@@ -31,4 +31,4 @@ This repo is intended to provide a comprehensive code base and documentation for
 - [ ] Build and attach autoencoder for audio compression
 - [ ] Test inference
 
-Checkout **STM32HELP.md** for useful environment and debugging tips for the project!
+Checkout **STM32HELP.md** for useful environment and debugging tips!
