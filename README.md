@@ -1,5 +1,5 @@
 # Acoustic Collar - STM32 Dev and Power Studies
-*Last updated 8/22/2025*
+*Last updated 8/29/2025*
 
 This repo is intended to provide a comprehensive code base and documentation for the acoustic collar project at E4E. The current branches, in descending order of date last updated, are as follows:
 - `cm4-active`: Testing SAI. DMA move to Cortex-M4 core for dual-core wake-up system
@@ -30,3 +30,5 @@ This repo is intended to provide a comprehensive code base and documentation for
 - [ ] Integrate LoRa (point-to-gateway) for audio uplink
 - [ ] Build and attach autoencoder for audio compression
 - [ ] Test inference
+
+Checkout ##STM32HELP.md for useful environment and debugging tips for the project!
